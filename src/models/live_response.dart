@@ -145,34 +145,43 @@ class SetupCompleteData {
 
 /// Server content response data
 class ServerContentData {
-  final bool? modelTurn;
-  final List<ContentPart> parts;
+  final ModelTurn? modelTurn;
   final bool? turnComplete;
   final bool? interrupted;
   final int? groundingChunkCount;
+  final TranscriptionData? inputTranscription;
+  final TranscriptionData? outputTranscription;
 
   const ServerContentData({
     this.modelTurn,
-    required this.parts,
     this.turnComplete,
     this.interrupted,
     this.groundingChunkCount,
+    this.inputTranscription,
+    this.outputTranscription,
   });
 
   factory ServerContentData.fromJson(Map<String, dynamic> json) {
-    final partsJson = json['parts'] as List<dynamic>? ?? [];
-    final parts = partsJson
-        .map((p) => ContentPart.fromJson(p as Map<String, dynamic>))
-        .toList();
-
     return ServerContentData(
-      modelTurn: json['modelTurn'] as bool?,
-      parts: parts,
+      modelTurn: json['modelTurn'] != null
+          ? ModelTurn.fromJson(json['modelTurn'] as Map<String, dynamic>)
+          : null,
       turnComplete: json['turnComplete'] as bool?,
       interrupted: json['interrupted'] as bool?,
       groundingChunkCount: json['grounding_chunk_count'] as int?,
+      inputTranscription: json['inputTranscription'] != null
+          ? TranscriptionData.fromJson(
+              json['inputTranscription'] as Map<String, dynamic>)
+          : null,
+      outputTranscription: json['outputTranscription'] != null
+          ? TranscriptionData.fromJson(
+              json['outputTranscription'] as Map<String, dynamic>)
+          : null,
     );
   }
+
+  /// Get parts from modelTurn (backward compatibility helper)
+  List<ContentPart> get parts => modelTurn?.parts ?? [];
 
   /// Get all text from parts
   String get text {
@@ -188,7 +197,28 @@ class ServerContentData {
 
   @override
   String toString() =>
-      'ServerContent(turn: $modelTurn, parts: ${parts.length}, complete: $turnComplete)';
+      'ServerContent(parts: ${parts.length}, complete: $turnComplete, interrupted: $interrupted)';
+}
+
+/// Transcription data (user speech or AI speech to text)
+class TranscriptionData {
+  final String text;
+  final bool? finished;
+
+  const TranscriptionData({
+    required this.text,
+    this.finished,
+  });
+
+  factory TranscriptionData.fromJson(Map<String, dynamic> json) {
+    return TranscriptionData(
+      text: json['text'] as String? ?? '',
+      finished: json['finished'] as bool?,
+    );
+  }
+
+  @override
+  String toString() => 'Transcription("$text", finished: $finished)';
 }
 
 /// Content part (text or audio)
@@ -216,6 +246,24 @@ class ContentPart {
     if (inlineData != null) return 'InlineData(${inlineData!.mimeType})';
     return 'EmptyPart';
   }
+}
+
+/// Model turn containing generated content parts
+class ModelTurn {
+  final List<ContentPart> parts;
+
+  const ModelTurn({required this.parts});
+
+  factory ModelTurn.fromJson(Map<String, dynamic> json) {
+    final partsJson = json['parts'] as List<dynamic>? ?? [];
+    final parts = partsJson
+        .map((p) => ContentPart.fromJson(p as Map<String, dynamic>))
+        .toList();
+    return ModelTurn(parts: parts);
+  }
+
+  @override
+  String toString() => 'ModelTurn(${parts.length} parts)';
 }
 
 /// Inline data (base64 encoded audio/image)

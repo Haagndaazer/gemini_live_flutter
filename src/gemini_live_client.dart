@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'callbacks/live_callbacks.dart';
@@ -87,13 +88,19 @@ class GeminiLiveClient {
 
       // Send setup message
       final setupMessage = config.toSetupMessage();
-      _channel!.sink.add(jsonEncode(setupMessage));
+      final setupJson = jsonEncode(setupMessage);
+      debugPrint('📤 Sending setup message: ${setupJson.substring(0, setupJson.length > 500 ? 500 : setupJson.length)}...');
+      _channel!.sink.add(setupJson);
 
       // Wait for setupComplete response (with timeout)
+      debugPrint('⏳ Waiting for setupComplete response (10s timeout)...');
       final setupCompleted = await _waitForSetupComplete(broadcastStream)
           .timeout(
         const Duration(seconds: 10),
-        onTimeout: () => throw LiveError.timeout('setup response'),
+        onTimeout: () {
+          debugPrint('❌ Setup timeout - no setupComplete received within 10 seconds');
+          return throw LiveError.timeout('setup response');
+        },
       );
 
       if (!setupCompleted) {
@@ -123,14 +130,26 @@ class GeminiLiveClient {
   Future<bool> _waitForSetupComplete(Stream<dynamic> stream) async {
     await for (final message in stream) {
       try {
+        debugPrint('📥 Received WebSocket message during setup: ${message.toString().substring(0, message.toString().length > 200 ? 200 : message.toString().length)}...');
         final response = LiveResponse.parse(message);
+        debugPrint('✅ Parsed response type: ${response.type.name}');
+
         if (response.type == LiveResponseType.setupComplete) {
+          debugPrint('🎉 Setup complete received!');
           return true;
+        } else if (response.type == LiveResponseType.error) {
+          debugPrint('❌ Error response during setup: ${response.error?.message}');
+          throw LiveError(
+            type: LiveErrorType.connectionFailed,
+            message: 'Setup failed: ${response.error?.message ?? "Unknown error"}',
+          );
         }
       } catch (e) {
-        // Continue waiting
+        debugPrint('⚠️ Error parsing setup response: $e');
+        // Continue waiting for valid response
       }
     }
+    debugPrint('❌ Stream ended without setupComplete');
     return false;
   }
 
@@ -215,6 +234,14 @@ class GeminiLiveClient {
     await _sendMessage(message);
   }
 
+  /// Send audio stream end signal (flush cached audio)
+  Future<void> sendAudioStreamEnd() async {
+    if (!isConnected) return;
+
+    final message = AudioStreamEndMessage();
+    await _sendMessage(message);
+  }
+
   /// Send interrupt signal (stop current generation)
   Future<void> interrupt() async {
     if (!isConnected) return;
@@ -292,6 +319,7 @@ class GeminiLiveClient {
         case LiveResponseType.audioPcm:
           final pcmData = response.audioPcm;
           if (pcmData != null) {
+            debugPrint('🔊 Received audio chunk from Gemini: ${pcmData.length} bytes');
             callbacks.onAudioData?.call(pcmData);
           }
           break;
@@ -319,7 +347,19 @@ class GeminiLiveClient {
     // Trigger full content callback
     callbacks.onServerContent?.call(content);
 
-    // Extract and trigger text callback
+    // Extract and trigger user transcription callback
+    if (content.inputTranscription != null &&
+        content.inputTranscription!.text.isNotEmpty) {
+      callbacks.onText?.call(content.inputTranscription!.text, isUser: true);
+    }
+
+    // Extract and trigger AI transcription callback
+    if (content.outputTranscription != null &&
+        content.outputTranscription!.text.isNotEmpty) {
+      callbacks.onText?.call(content.outputTranscription!.text, isUser: false);
+    }
+
+    // Extract and trigger text callback (from modelTurn)
     if (content.text.isNotEmpty) {
       callbacks.onText?.call(content.text, isUser: false);
     }

@@ -48,13 +48,13 @@ class RealtimeInputMessage extends LiveMessage {
 
   RealtimeInputMessage({
     required this.audioPcm,
-    this.mimeType = 'audio/pcm',
+    this.mimeType = 'audio/pcm;rate=16000',
   });
 
   /// Create from base64 encoded audio
   factory RealtimeInputMessage.fromBase64({
     required String base64Audio,
-    String mimeType = 'audio/pcm',
+    String mimeType = 'audio/pcm;rate=16000',
   }) {
     return RealtimeInputMessage(
       audioPcm: base64Decode(base64Audio),
@@ -180,6 +180,23 @@ class EndOfTurnMessage extends LiveMessage {
 
   @override
   String toString() => 'EndOfTurn()';
+}
+
+/// Audio stream end signal (flush cached audio, trigger response)
+class AudioStreamEndMessage extends LiveMessage {
+  AudioStreamEndMessage();
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      'realtimeInput': {
+        'audioStreamEnd': true,
+      }
+    };
+  }
+
+  @override
+  String toString() => 'AudioStreamEnd()';
 }
 
 /// Interrupt message (stop current generation)

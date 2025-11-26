@@ -24,6 +24,12 @@ class LiveConfig {
   /// WebSocket endpoint (defaults to v1beta)
   final String? wsEndpoint;
 
+  /// Enable input audio transcription (user speech to text)
+  final bool inputAudioTranscription;
+
+  /// Enable output audio transcription (AI speech to text)
+  final bool outputAudioTranscription;
+
   const LiveConfig({
     required this.apiKey,
     required this.model,
@@ -32,6 +38,8 @@ class LiveConfig {
     this.systemInstruction,
     this.generationConfig,
     this.wsEndpoint,
+    this.inputAudioTranscription = false,
+    this.outputAudioTranscription = false,
   });
 
   /// Get the full WebSocket URL with authentication
@@ -58,13 +66,32 @@ class LiveConfig {
     }
 
     // Add system instruction if provided
+    // Note: Must be Content object with parts array, not raw string
     if (systemInstruction != null) {
-      setup['systemInstruction'] = systemInstruction;
+      setup['systemInstruction'] = {
+        'parts': [
+          {'text': systemInstruction}
+        ]
+      };
     }
 
     // Add tools if provided
+    // Note: Must be wrapped in functionDeclarations array
     if (tools != null && tools!.isNotEmpty) {
-      setup['tools'] = tools;
+      setup['tools'] = [
+        {
+          'functionDeclarations': tools
+        }
+      ];
+    }
+
+    // Add transcription configs if enabled
+    if (inputAudioTranscription) {
+      setup['input_audio_transcription'] = <String, dynamic>{};
+    }
+
+    if (outputAudioTranscription) {
+      setup['output_audio_transcription'] = <String, dynamic>{};
     }
 
     return {'setup': setup};
@@ -95,6 +122,8 @@ class GenerationConfig {
   final int? topK;
   final double? presencePenalty;
   final double? frequencyPenalty;
+  final SpeechConfig? speechConfig;
+  final bool? enableAffectiveDialog;
 
   const GenerationConfig({
     this.candidateCount,
@@ -104,6 +133,8 @@ class GenerationConfig {
     this.topK,
     this.presencePenalty,
     this.frequencyPenalty,
+    this.speechConfig,
+    this.enableAffectiveDialog,
   });
 
   Map<String, dynamic> toJson() {
@@ -118,7 +149,56 @@ class GenerationConfig {
     if (frequencyPenalty != null) {
       json['frequencyPenalty'] = frequencyPenalty;
     }
+    if (speechConfig != null) json['speech_config'] = speechConfig!.toJson();
+    if (enableAffectiveDialog != null) {
+      json['enable_affective_dialog'] = enableAffectiveDialog;
+    }
 
     return json;
+  }
+}
+
+/// Speech configuration for voice selection
+class SpeechConfig {
+  final VoiceConfig voiceConfig;
+
+  const SpeechConfig({
+    required this.voiceConfig,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'voice_config': voiceConfig.toJson(),
+    };
+  }
+}
+
+/// Voice configuration
+class VoiceConfig {
+  final PrebuiltVoiceConfig prebuiltVoiceConfig;
+
+  const VoiceConfig({
+    required this.prebuiltVoiceConfig,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'prebuilt_voice_config': prebuiltVoiceConfig.toJson(),
+    };
+  }
+}
+
+/// Prebuilt voice configuration
+class PrebuiltVoiceConfig {
+  final String voiceName;
+
+  const PrebuiltVoiceConfig({
+    required this.voiceName,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'voice_name': voiceName,
+    };
   }
 }
