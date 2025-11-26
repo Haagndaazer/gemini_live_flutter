@@ -32,7 +32,9 @@ class LiveCallbacks {
   /// For voice mode with transcriptions, this includes both:
   /// - User transcriptions (isUser: true)
   /// - AI responses (isUser: false)
-  final void Function(String text, {bool isUser})? onText;
+  ///
+  /// The [finished] flag indicates whether this transcription segment is complete.
+  final void Function(String text, {bool isUser, bool finished})? onText;
 
   /// Called when server sends audio data (PCM format)
   ///
@@ -117,8 +119,8 @@ class LiveCallbacks {
       onAudioStateChanged: (state) => logger('[LiveAPI] Audio: ${state.name}'),
       onSessionStateChanged: (state) => logger('[LiveAPI] Session: $state'),
       onError: (error) => logger('[LiveAPI] Error: $error'),
-      onText: (text, {isUser = false}) =>
-          logger('[LiveAPI] Text (${isUser ? "user" : "ai"}): $text'),
+      onText: (text, {isUser = false, finished = false}) =>
+          logger('[LiveAPI] Text (${isUser ? "user" : "ai"}, finished: $finished): $text'),
       onAudioData: (data) => logger('[LiveAPI] Audio data: ${data.length} bytes'),
       onServerContent: (content) =>
           logger('[LiveAPI] Server content: ${content.parts.length} parts'),
@@ -144,7 +146,7 @@ class LiveCallbacks {
     void Function(AudioState)? onAudioStateChanged,
     void Function(LiveSessionState)? onSessionStateChanged,
     void Function(LiveError)? onError,
-    void Function(String, {bool isUser})? onText,
+    void Function(String, {bool isUser, bool finished})? onText,
     void Function(Uint8List)? onAudioData,
     void Function(InlineData)? onInlineAudio,
     void Function(ServerContentData)? onServerContent,

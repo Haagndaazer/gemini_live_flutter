@@ -319,7 +319,6 @@ class GeminiLiveClient {
         case LiveResponseType.audioPcm:
           final pcmData = response.audioPcm;
           if (pcmData != null) {
-            debugPrint('🔊 Received audio chunk from Gemini: ${pcmData.length} bytes');
             callbacks.onAudioData?.call(pcmData);
           }
           break;
@@ -350,18 +349,26 @@ class GeminiLiveClient {
     // Extract and trigger user transcription callback
     if (content.inputTranscription != null &&
         content.inputTranscription!.text.isNotEmpty) {
-      callbacks.onText?.call(content.inputTranscription!.text, isUser: true);
+      callbacks.onText?.call(
+        content.inputTranscription!.text,
+        isUser: true,
+        finished: content.inputTranscription!.finished ?? false,
+      );
     }
 
     // Extract and trigger AI transcription callback
     if (content.outputTranscription != null &&
         content.outputTranscription!.text.isNotEmpty) {
-      callbacks.onText?.call(content.outputTranscription!.text, isUser: false);
+      callbacks.onText?.call(
+        content.outputTranscription!.text,
+        isUser: false,
+        finished: content.outputTranscription!.finished ?? false,
+      );
     }
 
     // Extract and trigger text callback (from modelTurn)
     if (content.text.isNotEmpty) {
-      callbacks.onText?.call(content.text, isUser: false);
+      callbacks.onText?.call(content.text, isUser: false, finished: false);
     }
 
     // Extract and trigger inline audio callback
