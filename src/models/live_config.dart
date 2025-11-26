@@ -43,9 +43,10 @@ class LiveConfig {
   });
 
   /// Get the full WebSocket URL with authentication
+  /// Uses v1alpha for affective audio and advanced voice features
   String get webSocketUrl {
     final base = wsEndpoint ??
-        'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
+        'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent';
     return '$base?key=$apiKey';
   }
 

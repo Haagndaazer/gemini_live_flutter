@@ -42,7 +42,8 @@ class AudioPlaybackService {
     if (_isInitialized) return;
 
     try {
-      debugPrint('🔊 Initializing PCM audio player (24kHz mono)...');
+      // Disable verbose PCM logging
+      FlutterPcmSound.setLogLevel(LogLevel.none);
 
       await FlutterPcmSound.setup(
         sampleRate: 24000,  // Gemini outputs at 24kHz
@@ -57,10 +58,8 @@ class AudioPlaybackService {
       FlutterPcmSound.setFeedCallback(_onFeedNeeded);
 
       _isInitialized = true;
-      debugPrint('✅ PCM audio player initialized');
     } catch (e, stackTrace) {
       _isInitialized = false;
-      debugPrint('❌ Failed to initialize PCM audio: $e');
       final error = LiveError.audioPlayback(e, stackTrace);
       onError?.call(error);
       rethrow;
@@ -73,8 +72,6 @@ class AudioPlaybackService {
       final chunk = _audioQueue.removeFirst();
       _feedChunk(chunk);
     } else {
-      // Queue empty - playback will complete
-      debugPrint('📭 Audio queue empty, playback completing');
       _handlePlaybackComplete();
     }
   }
@@ -89,9 +86,7 @@ class AudioPlaybackService {
           Int16List.view(pcmData.buffer),
         ),
       );
-      debugPrint('🔊 Fed ${pcmData.length} bytes to player');
     } catch (e, stackTrace) {
-      debugPrint('❌ Error feeding audio chunk: $e');
       final error = LiveError.audioPlayback(e, stackTrace);
       onError?.call(error);
     }
@@ -108,11 +103,9 @@ class AudioPlaybackService {
     if (pcmData.isEmpty) return;
 
     _audioQueue.add(pcmData);
-    debugPrint('📊 Queued audio chunk: ${pcmData.length} bytes, queue size: ${_audioQueue.length}');
 
     // Start playback if we've reached pre-buffer threshold
     if (!_isPlaying && _audioQueue.length >= preBufferChunks) {
-      debugPrint('🎯 Pre-buffer threshold reached (${_audioQueue.length} chunks), starting playback');
       _startPlayback();
     }
   }
@@ -130,7 +123,6 @@ class AudioPlaybackService {
       _isPlaying = true;
       onPlaybackStarted?.call();
 
-      debugPrint('▶️ Starting PCM playback with ${_audioQueue.length} queued chunks');
       FlutterPcmSound.start();  // Returns bool, not Future
 
       // Feed initial chunks to fill the buffer
@@ -140,7 +132,6 @@ class AudioPlaybackService {
       }
     } catch (e, stackTrace) {
       _isPlaying = false;
-      debugPrint('❌ Failed to start playback: $e');
       final error = LiveError.audioPlayback(e, stackTrace);
       onError?.call(error);
       rethrow;
@@ -152,12 +143,7 @@ class AudioPlaybackService {
   /// This triggers playback of any queued chunks even if pre-buffer
   /// threshold hasn't been reached.
   void flushBuffer() {
-    if (_audioQueue.isEmpty) {
-      debugPrint('📭 Flush called but queue is empty');
-      return;
-    }
-
-    debugPrint('📤 Flushing buffer with ${_audioQueue.length} remaining chunks');
+    if (_audioQueue.isEmpty) return;
 
     if (!_isPlaying) {
       _startPlayback();
@@ -185,8 +171,6 @@ class AudioPlaybackService {
     if (!_isPlaying && _audioQueue.isEmpty) return;
 
     try {
-      debugPrint('⏹️ Stopping playback, clearing queue (${_audioQueue.length} chunks)');
-
       // Clear queue to stop feeding audio (playback stops naturally when buffer drains)
       _audioQueue.clear();
 
@@ -198,11 +182,8 @@ class AudioPlaybackService {
 
       _isPlaying = false;
       onPlaybackCompleted?.call();
-
-      debugPrint('✅ Playback stopped');
     } catch (e, stackTrace) {
       _isPlaying = false;
-      debugPrint('❌ Error stopping playback: $e');
       final error = LiveError.audioPlayback(e, stackTrace);
       onError?.call(error);
     }
@@ -210,24 +191,18 @@ class AudioPlaybackService {
 
   /// Clear audio queue without stopping playback
   void clearQueue() {
-    final queueSize = _audioQueue.length;
     _audioQueue.clear();
-    debugPrint('🗑️ Cleared audio queue ($queueSize chunks removed)');
   }
 
   /// Handle playback completion
   void _handlePlaybackComplete() {
     if (!_isPlaying) return;
-
-    debugPrint('✅ Playback completed');
     _isPlaying = false;
     onPlaybackCompleted?.call();
   }
 
   /// Dispose and cleanup
   Future<void> dispose() async {
-    debugPrint('🧹 Disposing audio playback service');
-
     await stop();
     clearQueue();
 
@@ -235,8 +210,6 @@ class AudioPlaybackService {
       await FlutterPcmSound.release();
       _isInitialized = false;
     }
-
-    debugPrint('✅ Audio playback service disposed');
   }
 }
 
