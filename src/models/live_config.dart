@@ -30,6 +30,12 @@ class LiveConfig {
   /// Enable output audio transcription (AI speech to text)
   final bool outputAudioTranscription;
 
+  /// Session resumption configuration for reconnecting to sessions
+  final SessionResumptionConfig? sessionResumption;
+
+  /// Context window compression configuration
+  final ContextWindowCompressionConfig? contextWindowCompression;
+
   const LiveConfig({
     required this.apiKey,
     required this.model,
@@ -40,6 +46,8 @@ class LiveConfig {
     this.wsEndpoint,
     this.inputAudioTranscription = false,
     this.outputAudioTranscription = false,
+    this.sessionResumption,
+    this.contextWindowCompression,
   });
 
   /// Get the full WebSocket URL with authentication
@@ -93,6 +101,16 @@ class LiveConfig {
 
     if (outputAudioTranscription) {
       setup['output_audio_transcription'] = <String, dynamic>{};
+    }
+
+    // Add session resumption config
+    if (sessionResumption != null) {
+      setup['sessionResumption'] = sessionResumption!.toJson();
+    }
+
+    // Add context window compression config
+    if (contextWindowCompression != null) {
+      setup['contextWindowCompression'] = contextWindowCompression!.toJson();
     }
 
     return {'setup': setup};
@@ -201,5 +219,55 @@ class PrebuiltVoiceConfig {
     return {
       'voice_name': voiceName,
     };
+  }
+}
+
+/// Session resumption configuration for reconnecting to a previous session
+class SessionResumptionConfig {
+  /// Previous session handle to resume from (null for new sessions)
+  final String? handle;
+
+  /// Whether resumption should be transparent (no notification to model)
+  final bool transparent;
+
+  const SessionResumptionConfig({
+    this.handle,
+    this.transparent = false,
+  });
+
+  Map<String, dynamic> toJson() {
+    final json = <String, dynamic>{};
+    if (handle != null) json['handle'] = handle;
+    if (transparent) json['transparent'] = transparent;
+    return json;
+  }
+}
+
+/// Context window compression configuration
+class ContextWindowCompressionConfig {
+  /// Whether compression is enabled
+  final bool enabled;
+
+  /// Target number of tokens after compression
+  final int? targetTokens;
+
+  const ContextWindowCompressionConfig({
+    this.enabled = false,
+    this.targetTokens,
+  });
+
+  /// Create an enabled compression config
+  const ContextWindowCompressionConfig.enabled({
+    this.targetTokens,
+  }) : enabled = true;
+
+  Map<String, dynamic> toJson() {
+    final json = <String, dynamic>{};
+    if (enabled) {
+      json['slidingWindow'] = <String, dynamic>{
+        if (targetTokens != null) 'targetTokens': targetTokens,
+      };
+    }
+    return json;
   }
 }

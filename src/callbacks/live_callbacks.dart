@@ -4,6 +4,10 @@ import '../models/live_error.dart';
 import '../models/live_response.dart';
 import '../models/live_state.dart';
 
+// Re-export types used in callbacks
+export '../models/live_response.dart'
+    show SessionResumptionUpdateData, GoAwayData;
+
 /// Callbacks for Gemini Live API events
 ///
 /// This class provides a clean interface for handling all events from the
@@ -80,6 +84,13 @@ class LiveCallbacks {
   /// Called when audio playback completes
   final void Function()? onPlaybackCompleted;
 
+  /// Called when session resumption update is received
+  final void Function(SessionResumptionUpdateData update)?
+      onSessionResumptionUpdate;
+
+  /// Called when server sends GoAway (will disconnect soon)
+  final void Function(GoAwayData goAway)? onGoAway;
+
   const LiveCallbacks({
     this.onConnected,
     this.onDisconnected,
@@ -100,6 +111,8 @@ class LiveCallbacks {
     this.onRecordingStopped,
     this.onPlaybackStarted,
     this.onPlaybackCompleted,
+    this.onSessionResumptionUpdate,
+    this.onGoAway,
   });
 
   /// Create empty callbacks (no-op)
@@ -159,6 +172,8 @@ class LiveCallbacks {
     void Function()? onRecordingStopped,
     void Function()? onPlaybackStarted,
     void Function()? onPlaybackCompleted,
+    void Function(SessionResumptionUpdateData)? onSessionResumptionUpdate,
+    void Function(GoAwayData)? onGoAway,
   }) {
     return LiveCallbacks(
       onConnected: onConnected ?? this.onConnected,
@@ -183,6 +198,9 @@ class LiveCallbacks {
       onRecordingStopped: onRecordingStopped ?? this.onRecordingStopped,
       onPlaybackStarted: onPlaybackStarted ?? this.onPlaybackStarted,
       onPlaybackCompleted: onPlaybackCompleted ?? this.onPlaybackCompleted,
+      onSessionResumptionUpdate:
+          onSessionResumptionUpdate ?? this.onSessionResumptionUpdate,
+      onGoAway: onGoAway ?? this.onGoAway,
     );
   }
 }

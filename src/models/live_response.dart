@@ -58,6 +58,10 @@ class LiveResponse {
       return LiveResponseType.toolCallCancellation;
     } else if (json.containsKey('error')) {
       return LiveResponseType.error;
+    } else if (json.containsKey('sessionResumptionUpdate')) {
+      return LiveResponseType.sessionResumptionUpdate;
+    } else if (json.containsKey('goAway')) {
+      return LiveResponseType.goAway;
     } else {
       return LiveResponseType.unknown;
     }
@@ -93,6 +97,19 @@ class LiveResponse {
     return ErrorData.fromJson(rawData['error']);
   }
 
+  /// Get session resumption update data
+  SessionResumptionUpdateData? get sessionResumptionUpdate {
+    if (type != LiveResponseType.sessionResumptionUpdate) return null;
+    return SessionResumptionUpdateData.fromJson(
+        rawData['sessionResumptionUpdate'] as Map<String, dynamic>);
+  }
+
+  /// Get go away data
+  GoAwayData? get goAway {
+    if (type != LiveResponseType.goAway) return null;
+    return GoAwayData.fromJson(rawData['goAway'] as Map<String, dynamic>);
+  }
+
   /// Get raw PCM audio data (if binary response)
   Uint8List? get audioPcm {
     if (type != LiveResponseType.audioPcm) return null;
@@ -126,6 +143,12 @@ enum LiveResponseType {
 
   /// Error response
   error,
+
+  /// Session resumption update
+  sessionResumptionUpdate,
+
+  /// GoAway — server will disconnect soon
+  goAway,
 
   /// Unknown response type
   unknown;
@@ -319,6 +342,50 @@ class ToolCallData {
 
   @override
   String toString() => 'ToolCall(id: $id, name: $name, args: $args)';
+}
+
+/// Session resumption update data from the server
+class SessionResumptionUpdateData {
+  /// New resumption handle for reconnecting
+  final String? newHandle;
+
+  /// Whether the session is resumable
+  final bool resumable;
+
+  const SessionResumptionUpdateData({
+    this.newHandle,
+    this.resumable = false,
+  });
+
+  factory SessionResumptionUpdateData.fromJson(Map<String, dynamic> json) {
+    return SessionResumptionUpdateData(
+      newHandle: json['newHandle'] as String?,
+      resumable: json['resumable'] as bool? ?? false,
+    );
+  }
+
+  @override
+  String toString() =>
+      'SessionResumptionUpdate(handle: ${newHandle != null ? "present" : "null"}, resumable: $resumable)';
+}
+
+/// GoAway message data — server is about to disconnect
+class GoAwayData {
+  /// Time remaining before disconnect (e.g., "30s")
+  final String? timeLeft;
+
+  const GoAwayData({
+    this.timeLeft,
+  });
+
+  factory GoAwayData.fromJson(Map<String, dynamic> json) {
+    return GoAwayData(
+      timeLeft: json['timeLeft'] as String?,
+    );
+  }
+
+  @override
+  String toString() => 'GoAway(timeLeft: $timeLeft)';
 }
 
 /// Error response data

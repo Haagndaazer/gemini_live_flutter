@@ -331,6 +331,20 @@ class GeminiLiveClient {
           }
           break;
 
+        case LiveResponseType.sessionResumptionUpdate:
+          final update = response.sessionResumptionUpdate;
+          if (update != null) {
+            callbacks.onSessionResumptionUpdate?.call(update);
+          }
+          break;
+
+        case LiveResponseType.goAway:
+          final goAway = response.goAway;
+          if (goAway != null) {
+            callbacks.onGoAway?.call(goAway);
+          }
+          break;
+
         case LiveResponseType.unknown:
           // Ignore unknown responses
           break;
