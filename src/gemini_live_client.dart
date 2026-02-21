@@ -295,6 +295,12 @@ class GeminiLiveClient {
       // Trigger raw response callback (for debugging)
       callbacks.onRawResponse?.call(response);
 
+      // Check for usage metadata in any response
+      final usageMetadata = response.usageMetadata;
+      if (usageMetadata != null) {
+        callbacks.onUsageMetadata?.call(usageMetadata);
+      }
+
       // Handle specific response types
       switch (response.type) {
         case LiveResponseType.setupComplete:

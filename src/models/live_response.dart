@@ -110,6 +110,21 @@ class LiveResponse {
     return GoAwayData.fromJson(rawData['goAway'] as Map<String, dynamic>);
   }
 
+  /// Get usage metadata (may appear at top level or inside serverContent)
+  UsageMetadataData? get usageMetadata {
+    if (rawData.containsKey('usageMetadata')) {
+      return UsageMetadataData.fromJson(
+          rawData['usageMetadata'] as Map<String, dynamic>);
+    }
+    // Also check inside serverContent
+    final sc = rawData['serverContent'] as Map<String, dynamic>?;
+    if (sc != null && sc.containsKey('usageMetadata')) {
+      return UsageMetadataData.fromJson(
+          sc['usageMetadata'] as Map<String, dynamic>);
+    }
+    return null;
+  }
+
   /// Get raw PCM audio data (if binary response)
   Uint8List? get audioPcm {
     if (type != LiveResponseType.audioPcm) return null;
@@ -386,6 +401,31 @@ class GoAwayData {
 
   @override
   String toString() => 'GoAway(timeLeft: $timeLeft)';
+}
+
+/// Usage metadata from Gemini API responses
+class UsageMetadataData {
+  final int promptTokenCount;
+  final int candidatesTokenCount;
+  final int totalTokenCount;
+
+  const UsageMetadataData({
+    required this.promptTokenCount,
+    required this.candidatesTokenCount,
+    required this.totalTokenCount,
+  });
+
+  factory UsageMetadataData.fromJson(Map<String, dynamic> json) {
+    return UsageMetadataData(
+      promptTokenCount: json['promptTokenCount'] as int? ?? 0,
+      candidatesTokenCount: json['candidatesTokenCount'] as int? ?? 0,
+      totalTokenCount: json['totalTokenCount'] as int? ?? 0,
+    );
+  }
+
+  @override
+  String toString() =>
+      'UsageMetadata(prompt: $promptTokenCount, candidates: $candidatesTokenCount, total: $totalTokenCount)';
 }
 
 /// Error response data
