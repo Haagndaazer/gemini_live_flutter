@@ -189,6 +189,7 @@ class ServerContentData {
   final int? groundingChunkCount;
   final TranscriptionData? inputTranscription;
   final TranscriptionData? outputTranscription;
+  final UsageMetadataData? usageMetadata;
 
   const ServerContentData({
     this.modelTurn,
@@ -197,6 +198,7 @@ class ServerContentData {
     this.groundingChunkCount,
     this.inputTranscription,
     this.outputTranscription,
+    this.usageMetadata,
   });
 
   factory ServerContentData.fromJson(Map<String, dynamic> json) {
@@ -214,6 +216,10 @@ class ServerContentData {
       outputTranscription: json['outputTranscription'] != null
           ? TranscriptionData.fromJson(
               json['outputTranscription'] as Map<String, dynamic>)
+          : null,
+      usageMetadata: json['usageMetadata'] != null
+          ? UsageMetadataData.fromJson(
+              json['usageMetadata'] as Map<String, dynamic>)
           : null,
     );
   }
