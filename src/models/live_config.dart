@@ -69,7 +69,7 @@ class LiveConfig {
       setup['generationConfig'] = {
         if (generationConfig != null) ...generationConfig!.toJson(),
         if (responseModalities.isNotEmpty)
-          'response_modalities':
+          'responseModalities':
               responseModalities.map((m) => m.name.toUpperCase()).toList(),
       };
     }
@@ -96,11 +96,11 @@ class LiveConfig {
 
     // Add transcription configs if enabled
     if (inputAudioTranscription) {
-      setup['input_audio_transcription'] = <String, dynamic>{};
+      setup['inputAudioTranscription'] = <String, dynamic>{};
     }
 
     if (outputAudioTranscription) {
-      setup['output_audio_transcription'] = <String, dynamic>{};
+      setup['outputAudioTranscription'] = <String, dynamic>{};
     }
 
     // Add session resumption config
@@ -168,9 +168,9 @@ class GenerationConfig {
     if (frequencyPenalty != null) {
       json['frequencyPenalty'] = frequencyPenalty;
     }
-    if (speechConfig != null) json['speech_config'] = speechConfig!.toJson();
+    if (speechConfig != null) json['speechConfig'] = speechConfig!.toJson();
     if (enableAffectiveDialog != null) {
-      json['enable_affective_dialog'] = enableAffectiveDialog;
+      json['enableAffectiveDialog'] = enableAffectiveDialog;
     }
 
     return json;
@@ -187,7 +187,7 @@ class SpeechConfig {
 
   Map<String, dynamic> toJson() {
     return {
-      'voice_config': voiceConfig.toJson(),
+      'voiceConfig': voiceConfig.toJson(),
     };
   }
 }
@@ -202,7 +202,7 @@ class VoiceConfig {
 
   Map<String, dynamic> toJson() {
     return {
-      'prebuilt_voice_config': prebuiltVoiceConfig.toJson(),
+      'prebuiltVoiceConfig': prebuiltVoiceConfig.toJson(),
     };
   }
 }
@@ -217,7 +217,7 @@ class PrebuiltVoiceConfig {
 
   Map<String, dynamic> toJson() {
     return {
-      'voice_name': voiceName,
+      'voiceName': voiceName,
     };
   }
 }
