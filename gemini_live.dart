@@ -49,4 +49,3 @@ export 'src/callbacks/live_callbacks.dart';
 
 // Audio services
 export 'src/services/audio_recording_service.dart';
-export 'src/services/audio_playback_service.dart';
