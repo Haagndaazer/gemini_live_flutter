@@ -21,7 +21,7 @@ import 'models/live_state.dart';
 /// final client = GeminiLiveClient(
 ///   config: LiveConfig(
 ///     apiKey: 'your-api-key',
-///     model: 'models/gemini-2.5-flash-native-audio-preview-09-2025',
+///     model: 'models/gemini-3.1-flash-live-preview',
 ///   ),
 ///   callbacks: LiveCallbacks(
 ///     onConnected: () => print('Connected!'),
@@ -162,8 +162,22 @@ class GeminiLiveClient {
     callbacks.onDisconnected?.call('User requested disconnect');
   }
 
-  /// Send text message
-  Future<void> sendText(String text, {bool turnComplete = true}) async {
+  /// Send text message via realtimeInput (Gemini 3.1+ compatible).
+  Future<void> sendText(String text) async {
+    if (!isConnected) {
+      throw LiveError(
+        type: LiveErrorType.connectionFailed,
+        message: 'Not connected',
+      );
+    }
+
+    final message = RealtimeTextInputMessage(text: text);
+    await _sendMessage(message);
+  }
+
+  /// Seed initial conversation history via clientContent.
+  /// Only works before the first model turn on Gemini 3.1+.
+  Future<void> sendHistorySeed(String text, {bool turnComplete = true}) async {
     if (!isConnected) {
       throw LiveError(
         type: LiveErrorType.connectionFailed,
@@ -175,7 +189,6 @@ class GeminiLiveClient {
       text: text,
       turnComplete: turnComplete,
     );
-
     await _sendMessage(message);
   }
 
@@ -242,15 +255,19 @@ class GeminiLiveClient {
     await _sendMessage(message);
   }
 
-  /// Send interrupt signal (stop current generation)
+  /// Send interrupt signal (stop current generation).
+  /// On 3.1+, uses audioStreamEnd to trigger implicit interruption
+  /// since the explicit 'interrupt' field does not exist in the API spec.
   Future<void> interrupt() async {
     if (!isConnected) return;
 
-    final message = InterruptMessage();
+    final message = AudioStreamEndMessage();
     await _sendMessage(message);
   }
 
-  /// Update response modalities mid-session
+  /// Update response modalities mid-session.
+  /// NOTE: Not supported on Gemini 3.1+. Use session resumption to change config.
+  @Deprecated('Mid-session config updates are not supported on Gemini 3.1+')
   Future<void> updateModalities(List<ResponseModality> modalities) async {
     if (!isConnected) {
       throw LiveError(
@@ -306,13 +323,21 @@ class GeminiLiveClient {
           break;
 
         case LiveResponseType.toolCall:
-          callbacks.onToolCall?.call(response.toolCall!);
+          // Dispatch all tool calls in the batch (Gemini 3.1+ can send multiple)
+          final toolCalls = response.toolCalls;
+          if (toolCalls != null) {
+            for (final tc in toolCalls) {
+              callbacks.onToolCall?.call(tc);
+            }
+          }
           break;
 
         case LiveResponseType.toolCallCancellation:
-          final id = response.toolCallCancellationId;
-          if (id != null) {
-            callbacks.onToolCallCancellation?.call(id);
+          final ids = response.toolCallCancellationIds;
+          if (ids != null) {
+            for (final id in ids) {
+              callbacks.onToolCallCancellation?.call(id);
+            }
           }
           break;
 
@@ -400,6 +425,11 @@ class GeminiLiveClient {
     // Handle interrupted
     if (content.interrupted == true) {
       callbacks.onInterrupted?.call();
+    }
+
+    // Handle generation complete (Gemini 3.1+)
+    if (content.generationComplete == true) {
+      callbacks.onGenerationComplete?.call();
     }
   }
 

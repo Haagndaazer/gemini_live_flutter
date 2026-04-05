@@ -10,7 +10,8 @@ abstract class LiveMessage {
   String toJsonString() => jsonEncode(toJson());
 }
 
-/// Client content message (text input)
+/// Client content message — restricted to initial history seeding only on 3.1+.
+/// For mid-session text input, use [RealtimeTextInputMessage] instead.
 class ClientContentMessage extends LiveMessage {
   final String text;
   final bool? turnComplete;
@@ -39,6 +40,27 @@ class ClientContentMessage extends LiveMessage {
 
   @override
   String toString() => 'ClientContent("${text.substring(0, text.length > 50 ? 50 : text.length)}...")';
+}
+
+/// Realtime text input message — use for mid-session text on Gemini 3.1+.
+/// Sends text via realtimeInput instead of clientContent.
+class RealtimeTextInputMessage extends LiveMessage {
+  final String text;
+
+  RealtimeTextInputMessage({required this.text});
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      'realtimeInput': {
+        'text': text,
+      }
+    };
+  }
+
+  @override
+  String toString() =>
+      'RealtimeTextInput("${text.substring(0, text.length > 50 ? 50 : text.length)}...")';
 }
 
 /// Realtime input message (audio input)
@@ -130,7 +152,35 @@ class ToolResponseMessage extends LiveMessage {
   String toString() => 'ToolResponse(id: $toolCallId, response: $response)';
 }
 
+/// Batch tool response message — sends all function responses in a single message.
+/// Required for Gemini 3.1+ which expects batched responses for parallel tool calls.
+class BatchToolResponseMessage extends LiveMessage {
+  final List<({String id, Map<String, dynamic> response})> responses;
+
+  BatchToolResponseMessage({required this.responses});
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      'toolResponse': {
+        'functionResponses': responses
+            .map((r) => {
+                  'id': r.id,
+                  'response': r.response,
+                })
+            .toList(),
+      }
+    };
+  }
+
+  @override
+  String toString() => 'BatchToolResponse(${responses.length} responses)';
+}
+
 /// Update config message (change settings mid-session)
+/// NOTE: Mid-session config updates are NOT supported on Gemini 3.1+.
+/// This class is kept for backward compatibility with 2.5.
+@Deprecated('Mid-session config updates are not supported on Gemini 3.1+')
 class UpdateConfigMessage extends LiveMessage {
   final List<String>? responseModalities;
   final Map<String, dynamic>? generationConfig;
@@ -165,7 +215,9 @@ class UpdateConfigMessage extends LiveMessage {
       'UpdateConfig(modalities: $responseModalities, config: $generationConfig)';
 }
 
-/// End of turn signal
+/// End of turn signal.
+/// On Gemini 3.1+, clientContent is restricted to initial history seeding.
+/// During live conversation, the model relies on VAD or audioStreamEnd instead.
 class EndOfTurnMessage extends LiveMessage {
   EndOfTurnMessage();
 
@@ -199,7 +251,11 @@ class AudioStreamEndMessage extends LiveMessage {
   String toString() => 'AudioStreamEnd()';
 }
 
-/// Interrupt message (stop current generation)
+/// Interrupt message (stop current generation).
+/// NOTE: The 'interrupt' field does NOT exist in the API spec.
+/// Interruption is implicit — sending any clientContent during generation
+/// causes interruption. On 3.1+, interruption is handled by VAD.
+@Deprecated('Interruption is implicit via VAD on 3.1+, not via explicit message')
 class InterruptMessage extends LiveMessage {
   InterruptMessage();
 

@@ -1,3 +1,10 @@
+﻿/// Default WebSocket endpoint for Gemini Live API.
+/// Both the main client and TTS service should use this shared constant.
+/// Use v1beta for API key auth; v1alpha is for ephemeral token auth only.
+const String kGeminiLiveWsEndpoint =
+    'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage'
+    '.v1beta.GenerativeService.BidiGenerateContent';
+
 /// Configuration for Gemini Live API connection
 ///
 /// This class encapsulates all settings needed to connect to and configure
@@ -6,7 +13,7 @@ class LiveConfig {
   /// Gemini API key for authentication
   final String apiKey;
 
-  /// Model name (e.g., 'models/gemini-2.5-flash-native-audio-preview-09-2025')
+  /// Model name (e.g., 'models/gemini-3.1-flash-live-preview')
   final String model;
 
   /// Response modalities (audio, text, or both)
@@ -51,10 +58,8 @@ class LiveConfig {
   });
 
   /// Get the full WebSocket URL with authentication
-  /// Uses v1alpha for affective audio and advanced voice features
   String get webSocketUrl {
-    final base = wsEndpoint ??
-        'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent';
+    final base = wsEndpoint ?? kGeminiLiveWsEndpoint;
     return '$base?key=$apiKey';
   }
 
@@ -142,7 +147,10 @@ class GenerationConfig {
   final double? presencePenalty;
   final double? frequencyPenalty;
   final SpeechConfig? speechConfig;
-  final bool? enableAffectiveDialog;
+  /// Thinking level for Gemini 3.1+ ('minimal', 'low', 'medium', 'high')
+  final String? thinkingLevel;
+  /// Whether to include thought summaries in responses (Gemini 3.1+)
+  final bool? includeThoughts;
 
   const GenerationConfig({
     this.candidateCount,
@@ -153,7 +161,8 @@ class GenerationConfig {
     this.presencePenalty,
     this.frequencyPenalty,
     this.speechConfig,
-    this.enableAffectiveDialog,
+    this.thinkingLevel,
+    this.includeThoughts,
   });
 
   Map<String, dynamic> toJson() {
@@ -169,8 +178,11 @@ class GenerationConfig {
       json['frequencyPenalty'] = frequencyPenalty;
     }
     if (speechConfig != null) json['speechConfig'] = speechConfig!.toJson();
-    if (enableAffectiveDialog != null) {
-      json['enableAffectiveDialog'] = enableAffectiveDialog;
+    if (thinkingLevel != null) {
+      json['thinkingConfig'] = {
+        'thinkingLevel': thinkingLevel,
+        if (includeThoughts != null) 'includeThoughts': includeThoughts,
+      };
     }
 
     return json;
@@ -227,18 +239,13 @@ class SessionResumptionConfig {
   /// Previous session handle to resume from (null for new sessions)
   final String? handle;
 
-  /// Whether resumption should be transparent (no notification to model)
-  final bool transparent;
-
   const SessionResumptionConfig({
     this.handle,
-    this.transparent = false,
   });
 
   Map<String, dynamic> toJson() {
     final json = <String, dynamic>{};
     if (handle != null) json['handle'] = handle;
-    if (transparent) json['transparent'] = transparent;
     return json;
   }
 }

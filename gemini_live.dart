@@ -8,7 +8,7 @@
 /// final client = GeminiLiveClient(
 ///   config: LiveConfig(
 ///     apiKey: 'your-api-key',
-///     model: 'models/gemini-2.5-flash-native-audio-preview-09-2025',
+///     model: 'models/gemini-3.1-flash-live-preview',
 ///     responseModalities: [ResponseModality.audio],
 ///   ),
 ///   callbacks: LiveCallbacks(

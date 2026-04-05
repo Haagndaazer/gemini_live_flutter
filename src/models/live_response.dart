@@ -79,16 +79,33 @@ class LiveResponse {
     return ServerContentData.fromJson(rawData['serverContent']);
   }
 
-  /// Get tool call data
+  /// Get first tool call data (backward compat)
   ToolCallData? get toolCall {
     if (type != LiveResponseType.toolCall) return null;
     return ToolCallData.fromJson(rawData['toolCall']);
   }
 
-  /// Get tool call cancellation ID
+  /// Get all tool calls from a batched response (Gemini 3.1+)
+  List<ToolCallData>? get toolCalls {
+    if (type != LiveResponseType.toolCall) return null;
+    return ToolCallData.allFromJson(rawData['toolCall']);
+  }
+
+  /// Get tool call cancellation ID (single, backward compat)
   String? get toolCallCancellationId {
     if (type != LiveResponseType.toolCallCancellation) return null;
-    return rawData['toolCallCancellation']['id'] as String?;
+    final data = rawData['toolCallCancellation'] as Map<String, dynamic>;
+    return data['id'] as String?;
+  }
+
+  /// Get all tool call cancellation IDs (supports batched cancellations on 3.1+)
+  List<String>? get toolCallCancellationIds {
+    if (type != LiveResponseType.toolCallCancellation) return null;
+    final data = rawData['toolCallCancellation'] as Map<String, dynamic>;
+    // Support both single 'id' (2.5) and plural 'ids' (3.1)
+    if (data['ids'] != null) return List<String>.from(data['ids'] as List);
+    if (data['id'] != null) return [data['id'] as String];
+    return null;
   }
 
   /// Get error data
@@ -171,6 +188,7 @@ class ServerContentData {
   final ModelTurn? modelTurn;
   final bool? turnComplete;
   final bool? interrupted;
+  final bool? generationComplete;
   final int? groundingChunkCount;
   final TranscriptionData? inputTranscription;
   final TranscriptionData? outputTranscription;
@@ -179,6 +197,7 @@ class ServerContentData {
     this.modelTurn,
     this.turnComplete,
     this.interrupted,
+    this.generationComplete,
     this.groundingChunkCount,
     this.inputTranscription,
     this.outputTranscription,
@@ -191,6 +210,7 @@ class ServerContentData {
           : null,
       turnComplete: json['turnComplete'] as bool?,
       interrupted: json['interrupted'] as bool?,
+      generationComplete: json['generationComplete'] as bool?,
       groundingChunkCount: json['grounding_chunk_count'] as int?,
       inputTranscription: json['inputTranscription'] != null
           ? TranscriptionData.fromJson(
@@ -318,26 +338,56 @@ class ToolCallData {
   final String id;
   final String name;
   final Map<String, dynamic> args;
+  /// Raw metadata from the function call (e.g., thought signatures on Gemini 3).
+  /// Preserved for passthrough in tool responses.
+  final Map<String, dynamic>? rawMetadata;
 
   const ToolCallData({
     required this.id,
     required this.name,
     required this.args,
+    this.rawMetadata,
   });
 
+  /// Parse a single function call entry from the functionCalls array.
+  factory ToolCallData._fromFunctionCall(Map<String, dynamic> fc) {
+    // Preserve any fields beyond id/name/args as rawMetadata
+    final knownKeys = {'id', 'name', 'args'};
+    final metadata = <String, dynamic>{};
+    for (final entry in fc.entries) {
+      if (!knownKeys.contains(entry.key)) {
+        metadata[entry.key] = entry.value;
+      }
+    }
+
+    return ToolCallData(
+      id: fc['id'] as String? ?? '',
+      name: fc['name'] as String,
+      args: fc['args'] as Map<String, dynamic>? ?? {},
+      rawMetadata: metadata.isEmpty ? null : metadata,
+    );
+  }
+
+  /// Parse first tool call (backward compat for single-call responses).
   factory ToolCallData.fromJson(Map<String, dynamic> json) {
     final functionCalls = json['functionCalls'] as List<dynamic>? ?? [];
     if (functionCalls.isEmpty) {
       throw FormatException('Tool call missing functionCalls');
     }
+    return ToolCallData._fromFunctionCall(
+        functionCalls[0] as Map<String, dynamic>);
+  }
 
-    final firstCall = functionCalls[0] as Map<String, dynamic>;
-
-    return ToolCallData(
-      id: firstCall['id'] as String? ?? '',
-      name: firstCall['name'] as String,
-      args: firstCall['args'] as Map<String, dynamic>? ?? {},
-    );
+  /// Parse ALL tool calls from a batched response (Gemini 3.1+).
+  static List<ToolCallData> allFromJson(Map<String, dynamic> json) {
+    final functionCalls = json['functionCalls'] as List<dynamic>? ?? [];
+    if (functionCalls.isEmpty) {
+      throw FormatException('Tool call missing functionCalls');
+    }
+    return functionCalls
+        .map((fc) =>
+            ToolCallData._fromFunctionCall(fc as Map<String, dynamic>))
+        .toList();
   }
 
   @override

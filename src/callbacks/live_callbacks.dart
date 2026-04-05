@@ -69,6 +69,9 @@ class LiveCallbacks {
   /// Called when generation is interrupted
   final void Function()? onInterrupted;
 
+  /// Called when model has finished generating a response (Gemini 3.1+)
+  final void Function()? onGenerationComplete;
+
   /// Called when raw response is received (for debugging)
   final void Function(LiveResponse response)? onRawResponse;
 
@@ -106,6 +109,7 @@ class LiveCallbacks {
     this.onToolCallCancellation,
     this.onTurnComplete,
     this.onInterrupted,
+    this.onGenerationComplete,
     this.onRawResponse,
     this.onRecordingStarted,
     this.onRecordingStopped,
@@ -167,6 +171,7 @@ class LiveCallbacks {
     void Function(String)? onToolCallCancellation,
     void Function()? onTurnComplete,
     void Function()? onInterrupted,
+    void Function()? onGenerationComplete,
     void Function(LiveResponse)? onRawResponse,
     void Function()? onRecordingStarted,
     void Function()? onRecordingStopped,
@@ -193,6 +198,7 @@ class LiveCallbacks {
           onToolCallCancellation ?? this.onToolCallCancellation,
       onTurnComplete: onTurnComplete ?? this.onTurnComplete,
       onInterrupted: onInterrupted ?? this.onInterrupted,
+      onGenerationComplete: onGenerationComplete ?? this.onGenerationComplete,
       onRawResponse: onRawResponse ?? this.onRawResponse,
       onRecordingStarted: onRecordingStarted ?? this.onRecordingStarted,
       onRecordingStopped: onRecordingStopped ?? this.onRecordingStopped,
