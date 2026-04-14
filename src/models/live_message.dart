@@ -86,14 +86,16 @@ class RealtimeInputMessage extends LiveMessage {
 
   @override
   Map<String, dynamic> toJson() {
+    // Gemini 3.1+: modality-specific `audio` field replaces the deprecated
+    // `realtimeInput.mediaChunks[]`. See ai.google.dev/api/live —
+    // BidiGenerateContentRealtimeInput. RealtimeTextInputMessage above
+    // already uses the same modality-specific pattern (realtimeInput.text).
     return {
       'realtimeInput': {
-        'mediaChunks': [
-          {
-            'mimeType': mimeType,
-            'data': base64Encode(audioPcm),
-          }
-        ]
+        'audio': {
+          'mimeType': mimeType,
+          'data': base64Encode(audioPcm),
+        }
       }
     };
   }
