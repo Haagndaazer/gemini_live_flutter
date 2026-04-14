@@ -287,12 +287,18 @@ class GeminiLiveClient {
   Future<void> _sendMessage(LiveMessage message) async {
     try {
       final jsonString = message.toJsonString();
+      final preview = jsonString.length > 200
+          ? '${jsonString.substring(0, 200)}…'
+          : jsonString;
+      debugPrint(
+          '📤 [LiveClient] send ${message.runtimeType} ${jsonString.length}B: $preview');
       _channel!.sink.add(jsonString);
 
       _updateState(_state.copyWith(
         messagesSent: _state.messagesSent + 1,
       ));
     } catch (e, stackTrace) {
+      debugPrint('❌ [LiveClient] send ${message.runtimeType} failed: $e');
       final error = LiveError.messageFormat(e, stackTrace);
       _handleError(error);
       rethrow;
