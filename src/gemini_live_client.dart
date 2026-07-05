@@ -158,6 +158,13 @@ class GeminiLiveClient {
             message: 'Setup failed: ${response.error?.message ?? "Unknown error"}',
           );
         }
+      } on LiveError {
+        // WP-3 (audit L13): the LiveError just thrown above for a genuine
+        // setup-error frame must surface immediately with the server's
+        // real message — the catch-all below is only for parse hiccups on
+        // an unrelated frame shape, and used to swallow this one too,
+        // turning a real rejection into a generic 10s timeout.
+        rethrow;
       } catch (e) {
         debugPrint('⚠️ Error parsing setup response: $e');
         // Continue waiting for valid response
@@ -332,136 +339,181 @@ class GeminiLiveClient {
   }
 
   /// Handle incoming WebSocket message
+  ///
+  /// WP-3 (audit L2): parsing and dispatch are separate failure domains.
+  /// A malformed frame is reported via `onError` WITHOUT touching
+  /// connection state — only a real transport event (the stream's own
+  /// onError/onDone) or an explicit disconnect may change that. Each
+  /// dispatched callback is individually guarded ([_safeDispatch]) so an
+  /// exception thrown by app code (onText, onToolCall, a DB write inside a
+  /// handler, ...) can never poison the client into believing the
+  /// connection died — pre-fix, ANY such exception here routed to
+  /// `_handleError`, which set state to `error` and made every subsequent
+  /// send throw `'Not connected'` even though the socket was fine.
   void _handleMessage(dynamic message) {
+    final LiveResponse response;
     try {
-      final response = LiveResponse.parse(message);
-
-      // Update message count
-      _updateState(_state.copyWith(
-        messagesReceived: _state.messagesReceived + 1,
-      ));
-
-      // Trigger raw response callback (for debugging)
-      callbacks.onRawResponse?.call(response);
-
-      // Handle specific response types
-      switch (response.type) {
-        case LiveResponseType.setupComplete:
-          // Already handled in connect()
-          break;
-
-        case LiveResponseType.serverContent:
-          _handleServerContent(response.serverContent!);
-          break;
-
-        case LiveResponseType.toolCall:
-          // Dispatch all tool calls in the batch (Gemini 3.1+ can send multiple)
-          final toolCalls = response.toolCalls;
-          if (toolCalls != null) {
-            for (final tc in toolCalls) {
-              callbacks.onToolCall?.call(tc);
-            }
-          }
-          break;
-
-        case LiveResponseType.toolCallCancellation:
-          final ids = response.toolCallCancellationIds;
-          if (ids != null) {
-            for (final id in ids) {
-              callbacks.onToolCallCancellation?.call(id);
-            }
-          }
-          break;
-
-        case LiveResponseType.audioPcm:
-          final pcmData = response.audioPcm;
-          if (pcmData != null) {
-            callbacks.onAudioData?.call(pcmData);
-          }
-          break;
-
-        case LiveResponseType.error:
-          final errorData = response.error;
-          if (errorData != null) {
-            final error = LiveError.apiError(errorData.message);
-            _handleError(error);
-          }
-          break;
-
-        case LiveResponseType.sessionResumptionUpdate:
-          final update = response.sessionResumptionUpdate;
-          if (update != null) {
-            callbacks.onSessionResumptionUpdate?.call(update);
-          }
-          break;
-
-        case LiveResponseType.goAway:
-          final goAway = response.goAway;
-          if (goAway != null) {
-            callbacks.onGoAway?.call(goAway);
-          }
-          break;
-
-        case LiveResponseType.unknown:
-          // Ignore unknown responses
-          break;
-      }
+      response = LiveResponse.parse(message);
     } catch (e, stackTrace) {
-      final error = LiveError.messageFormat(e, stackTrace);
-      _handleError(error);
+      debugPrint('❌ [LiveClient] failed to parse message: $e');
+      _safeDispatch(
+        'onError (parse failure)',
+        () => callbacks.onError?.call(LiveError.messageFormat(e, stackTrace)),
+      );
+      return;
+    }
+
+    // Update message count
+    _updateState(_state.copyWith(
+      messagesReceived: _state.messagesReceived + 1,
+    ));
+
+    // Trigger raw response callback (for debugging)
+    _safeDispatch(
+        'onRawResponse', () => callbacks.onRawResponse?.call(response));
+
+    // Handle specific response types
+    switch (response.type) {
+      case LiveResponseType.setupComplete:
+        // Already handled in connect()
+        break;
+
+      case LiveResponseType.serverContent:
+        final content = response.serverContent;
+        if (content != null) _handleServerContent(content);
+        break;
+
+      case LiveResponseType.toolCall:
+        // Dispatch all tool calls in the batch (Gemini 3.1+ can send multiple)
+        final toolCalls = response.toolCalls;
+        if (toolCalls != null) {
+          for (final tc in toolCalls) {
+            _safeDispatch('onToolCall', () => callbacks.onToolCall?.call(tc));
+          }
+        }
+        break;
+
+      case LiveResponseType.toolCallCancellation:
+        final ids = response.toolCallCancellationIds;
+        if (ids != null) {
+          for (final id in ids) {
+            _safeDispatch('onToolCallCancellation',
+                () => callbacks.onToolCallCancellation?.call(id));
+          }
+        }
+        break;
+
+      case LiveResponseType.audioPcm:
+        final pcmData = response.audioPcm;
+        if (pcmData != null) {
+          _safeDispatch(
+              'onAudioData', () => callbacks.onAudioData?.call(pcmData));
+        }
+        break;
+
+      case LiveResponseType.error:
+        final errorData = response.error;
+        if (errorData != null) {
+          // Transport-fatal: an explicit error frame FROM THE SERVER is a
+          // genuine error, unlike a local parse/callback failure — state
+          // change here is correct, not the bug this WP fixes.
+          _handleError(LiveError.apiError(errorData.message));
+        }
+        break;
+
+      case LiveResponseType.sessionResumptionUpdate:
+        final update = response.sessionResumptionUpdate;
+        if (update != null) {
+          _safeDispatch('onSessionResumptionUpdate',
+              () => callbacks.onSessionResumptionUpdate?.call(update));
+        }
+        break;
+
+      case LiveResponseType.goAway:
+        final goAway = response.goAway;
+        if (goAway != null) {
+          _safeDispatch('onGoAway', () => callbacks.onGoAway?.call(goAway));
+        }
+        break;
+
+      case LiveResponseType.unknown:
+        // Ignore unknown responses
+        break;
+    }
+  }
+
+  /// Runs [action], logging and swallowing any exception instead of
+  /// letting it propagate (WP-3, audit L2) — see [_handleMessage].
+  void _safeDispatch(String label, void Function() action) {
+    try {
+      action();
+    } catch (e, stackTrace) {
+      debugPrint('❌ [LiveClient] $label threw, ignoring: $e\n$stackTrace');
     }
   }
 
   /// Handle server content response
   void _handleServerContent(ServerContentData content) {
     // Trigger full content callback
-    callbacks.onServerContent?.call(content);
+    _safeDispatch(
+        'onServerContent', () => callbacks.onServerContent?.call(content));
 
     // Extract and trigger user transcription callback
     if (content.inputTranscription != null &&
         content.inputTranscription!.text.isNotEmpty) {
-      callbacks.onText?.call(
-        content.inputTranscription!.text,
-        isUser: true,
-        finished: content.inputTranscription!.finished ?? false,
+      _safeDispatch(
+        'onText (user transcription)',
+        () => callbacks.onText?.call(
+          content.inputTranscription!.text,
+          isUser: true,
+          finished: content.inputTranscription!.finished ?? false,
+        ),
       );
     }
 
     // Extract and trigger AI transcription callback
     if (content.outputTranscription != null &&
         content.outputTranscription!.text.isNotEmpty) {
-      callbacks.onText?.call(
-        content.outputTranscription!.text,
-        isUser: false,
-        finished: content.outputTranscription!.finished ?? false,
+      _safeDispatch(
+        'onText (ai transcription)',
+        () => callbacks.onText?.call(
+          content.outputTranscription!.text,
+          isUser: false,
+          finished: content.outputTranscription!.finished ?? false,
+        ),
       );
     }
 
     // Extract and trigger text callback (from modelTurn)
     if (content.text.isNotEmpty) {
-      callbacks.onText?.call(content.text, isUser: false, finished: false);
+      _safeDispatch(
+        'onText (modelTurn)',
+        () => callbacks.onText?.call(content.text, isUser: false, finished: false),
+      );
     }
 
     // Extract and trigger inline audio callback
     for (final part in content.parts) {
       if (part.inlineData != null) {
-        callbacks.onInlineAudio?.call(part.inlineData!);
+        _safeDispatch('onInlineAudio',
+            () => callbacks.onInlineAudio?.call(part.inlineData!));
       }
     }
 
     // Handle turn complete
     if (content.turnComplete == true) {
-      callbacks.onTurnComplete?.call();
+      _safeDispatch('onTurnComplete', () => callbacks.onTurnComplete?.call());
     }
 
     // Handle interrupted
     if (content.interrupted == true) {
-      callbacks.onInterrupted?.call();
+      _safeDispatch('onInterrupted', () => callbacks.onInterrupted?.call());
     }
 
     // Handle generation complete (Gemini 3.1+)
     if (content.generationComplete == true) {
-      callbacks.onGenerationComplete?.call();
+      _safeDispatch(
+          'onGenerationComplete', () => callbacks.onGenerationComplete?.call());
     }
   }
 
@@ -476,7 +528,7 @@ class GeminiLiveClient {
           );
 
     _updateState(LiveSessionState.error(liveError.message));
-    callbacks.onError?.call(liveError);
+    _safeDispatch('onError', () => callbacks.onError?.call(liveError));
   }
 
   /// Handle WebSocket disconnect (the stream's `onDone`)
