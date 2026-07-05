@@ -42,11 +42,24 @@ class GeminiLiveClient {
   StreamSubscription? _subscription;
   LiveSessionState _state = LiveSessionState.disconnected();
 
+  /// Guards `onDisconnected` to fire at most once per connection attempt —
+  /// both the passive `_handleDisconnect` (socket closed by the server) and
+  /// the explicit `disconnect()` call can race to deliver it. Reset in
+  /// [connect].
+  bool _disconnectDelivered = false;
+
+  /// Test seam: swap in a fake channel so lifecycle logic (disconnect
+  /// cleanup, close codes, error-state handling) can be driven without a
+  /// real WebSocket. Defaults to the real `WebSocketChannel.connect`.
+  final WebSocketChannel Function(Uri uri) _channelFactory;
+
   /// Create a new Gemini Live client
   GeminiLiveClient({
     required this.config,
     required this.callbacks,
-  });
+    @visibleForTesting
+    WebSocketChannel Function(Uri uri)? channelFactory,
+  }) : _channelFactory = channelFactory ?? WebSocketChannel.connect;
 
   /// Current session state
   LiveSessionState get state => _state;
@@ -69,6 +82,7 @@ class GeminiLiveClient {
     }
 
     try {
+      _disconnectDelivered = false;
       _updateState(_state.copyWith(
         connectionState: ConnectionState.connecting,
         errorMessage: null,
@@ -76,7 +90,7 @@ class GeminiLiveClient {
 
       // Create WebSocket connection
       final uri = Uri.parse(config.webSocketUrl);
-      _channel = WebSocketChannel.connect(uri);
+      _channel = _channelFactory(uri);
 
       // Set up message listener
       final broadcastStream = _channel!.stream.asBroadcastStream();
@@ -154,12 +168,24 @@ class GeminiLiveClient {
   }
 
   /// Disconnect from Gemini Live API
+  ///
+  /// Always tears down the socket/subscription regardless of the current
+  /// state (fixes L3: an error state or a mid-connect timeout used to leave
+  /// the socket open forever). `onDisconnected` only fires if the connection
+  /// was actually active, and at most once per connection attempt (shared
+  /// guard with [_handleDisconnect] so a racing server-side close can't
+  /// double-deliver).
   Future<void> disconnect() async {
-    if (!isConnected) return;
+    final wasActive = _state.connectionState.isConnected ||
+        _state.connectionState.isConnecting;
 
     await _cleanup();
     _updateState(LiveSessionState.disconnected());
-    callbacks.onDisconnected?.call('User requested disconnect');
+
+    if (wasActive && !_disconnectDelivered) {
+      _disconnectDelivered = true;
+      callbacks.onDisconnected?.call('User requested disconnect');
+    }
   }
 
   /// Send text message via realtimeInput (Gemini 3.1+ compatible).
@@ -453,11 +479,27 @@ class GeminiLiveClient {
     callbacks.onError?.call(liveError);
   }
 
-  /// Handle WebSocket disconnect
+  /// Handle WebSocket disconnect (the stream's `onDone`)
+  ///
+  /// Always delivers `onDisconnected` — including from an `error` state —
+  /// because the transport is gone either way and the teacher must always
+  /// learn that (fixes L2/L7: a callback exception used to leave the
+  /// service believing the socket was still up). Close code/reason are
+  /// captured before `_channel` is nulled out and folded into the reason
+  /// string so `classifyErrorText` has real signal instead of a generic
+  /// message. Guarded to fire at most once per connection (shared with
+  /// [disconnect]).
   void _handleDisconnect() {
-    if (_state.connectionState.isConnected) {
-      _updateState(LiveSessionState.disconnected());
-      callbacks.onDisconnected?.call('Connection closed by server');
+    final closeCode = _channel?.closeCode;
+    final closeReason = _channel?.closeReason;
+    final reason =
+        'Connection closed by server (code=$closeCode, reason=$closeReason)';
+
+    _updateState(LiveSessionState.disconnected());
+
+    if (!_disconnectDelivered) {
+      _disconnectDelivered = true;
+      callbacks.onDisconnected?.call(reason);
     }
   }
 
