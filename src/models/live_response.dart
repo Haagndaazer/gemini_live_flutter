@@ -137,6 +137,18 @@ class LiveResponse {
     return null;
   }
 
+  /// Get usage metadata (WP-7, audit L12) — parsed independently of [type]
+  /// /[_determineType], since `usageMetadata` can arrive standalone or
+  /// alongside another top-level field in the same server message (verified
+  /// against ai.google.dev/api/live: it's documented as its own top-level
+  /// field on `BidiGenerateContentServerMessage`, not scoped under any of
+  /// the other response types this class switches on).
+  UsageMetadataData? get usageMetadata {
+    final raw = rawData['usageMetadata'];
+    if (raw == null) return null;
+    return UsageMetadataData.fromJson(raw as Map<String, dynamic>);
+  }
+
   @override
   String toString() => 'LiveResponse(type: ${type.name}, data: $rawData)';
 }
@@ -460,4 +472,76 @@ class ErrorData {
 
   @override
   String toString() => 'Error($code: $message)';
+}
+
+/// Token usage for the most recent generation (WP-7, audit L12).
+/// See ai.google.dev/api/live — UsageMetadata. Docs describe
+/// `totalTokenCount` as "for the generation request" (singular), not the
+/// whole session — treated here as PER-TURN, not cumulative across the
+/// session (matches how usageMetadata behaves on the REST generateContent
+/// API); the doc doesn't explicitly confirm this for the Live/bidi
+/// protocol, so the client takes the safer "latest value this turn wins,
+/// applied once" approach rather than summing every message, to avoid
+/// double-counting if the server ever does send incremental updates
+/// within one turn.
+class UsageMetadataData {
+  final int? promptTokenCount;
+  final int? responseTokenCount;
+  final int? totalTokenCount;
+  final List<ModalityTokenCount>? promptTokensDetails;
+  final List<ModalityTokenCount>? responseTokensDetails;
+
+  const UsageMetadataData({
+    this.promptTokenCount,
+    this.responseTokenCount,
+    this.totalTokenCount,
+    this.promptTokensDetails,
+    this.responseTokensDetails,
+  });
+
+  factory UsageMetadataData.fromJson(Map<String, dynamic> json) {
+    List<ModalityTokenCount>? parseDetails(String key) {
+      final list = json[key] as List<dynamic>?;
+      if (list == null) return null;
+      return list
+          .map((e) => ModalityTokenCount.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+
+    return UsageMetadataData(
+      promptTokenCount: json['promptTokenCount'] as int?,
+      responseTokenCount: json['responseTokenCount'] as int?,
+      totalTokenCount: json['totalTokenCount'] as int?,
+      promptTokensDetails: parseDetails('promptTokensDetails'),
+      responseTokensDetails: parseDetails('responseTokensDetails'),
+    );
+  }
+
+  @override
+  String toString() =>
+      'UsageMetadata(prompt: $promptTokenCount, response: $responseTokenCount, '
+      'total: $totalTokenCount)';
+}
+
+/// Per-modality token count entry within [UsageMetadataData]'s details
+/// arrays. `modality` is a string enum (e.g. 'TEXT', 'AUDIO', 'IMAGE') per
+/// ai.google.dev's ModalityTokenCount type.
+class ModalityTokenCount {
+  final String modality;
+  final int tokenCount;
+
+  const ModalityTokenCount({
+    required this.modality,
+    required this.tokenCount,
+  });
+
+  factory ModalityTokenCount.fromJson(Map<String, dynamic> json) {
+    return ModalityTokenCount(
+      modality: json['modality'] as String? ?? 'MODALITY_UNSPECIFIED',
+      tokenCount: json['tokenCount'] as int? ?? 0,
+    );
+  }
+
+  @override
+  String toString() => 'ModalityTokenCount($modality: $tokenCount)';
 }

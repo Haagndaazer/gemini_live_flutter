@@ -390,6 +390,14 @@ class GeminiLiveClient {
     _safeDispatch(
         'onRawResponse', () => callbacks.onRawResponse?.call(response));
 
+    // WP-7 (audit L12): usageMetadata can arrive standalone or alongside
+    // another top-level field, so it's checked independently of — and
+    // before — the type switch below, not as one of its cases.
+    final usage = _safeGet('usageMetadata', () => response.usageMetadata);
+    if (usage != null) {
+      _safeDispatch('onUsageMetadata', () => callbacks.onUsageMetadata?.call(usage));
+    }
+
     // Handle specific response types
     switch (response.type) {
       case LiveResponseType.setupComplete:

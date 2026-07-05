@@ -6,7 +6,7 @@ import '../models/live_state.dart';
 
 // Re-export types used in callbacks
 export '../models/live_response.dart'
-    show SessionResumptionUpdateData, GoAwayData;
+    show SessionResumptionUpdateData, GoAwayData, UsageMetadataData, ModalityTokenCount;
 
 /// Callbacks for Gemini Live API events
 ///
@@ -98,6 +98,11 @@ class LiveCallbacks {
   /// Called when server sends GoAway (will disconnect soon)
   final void Function(GoAwayData goAway)? onGoAway;
 
+  /// Called whenever a server message carries usage metadata (WP-7, audit
+  /// L12) — real token counts, replacing the app's byte/char-based
+  /// estimates for the turn.
+  final void Function(UsageMetadataData usage)? onUsageMetadata;
+
   const LiveCallbacks({
     this.onConnected,
     this.onDisconnected,
@@ -121,6 +126,7 @@ class LiveCallbacks {
     this.onPlaybackCompleted,
     this.onSessionResumptionUpdate,
     this.onGoAway,
+    this.onUsageMetadata,
   });
 
   /// Create empty callbacks (no-op)
@@ -157,6 +163,7 @@ class LiveCallbacks {
       onRecordingStopped: () => logger('[LiveAPI] Recording stopped'),
       onPlaybackStarted: () => logger('[LiveAPI] Playback started'),
       onPlaybackCompleted: () => logger('[LiveAPI] Playback completed'),
+      onUsageMetadata: (usage) => logger('[LiveAPI] Usage: $usage'),
     );
   }
 
@@ -184,6 +191,7 @@ class LiveCallbacks {
     void Function()? onPlaybackCompleted,
     void Function(SessionResumptionUpdateData)? onSessionResumptionUpdate,
     void Function(GoAwayData)? onGoAway,
+    void Function(UsageMetadataData)? onUsageMetadata,
   }) {
     return LiveCallbacks(
       onConnected: onConnected ?? this.onConnected,
@@ -212,6 +220,7 @@ class LiveCallbacks {
       onSessionResumptionUpdate:
           onSessionResumptionUpdate ?? this.onSessionResumptionUpdate,
       onGoAway: onGoAway ?? this.onGoAway,
+      onUsageMetadata: onUsageMetadata ?? this.onUsageMetadata,
     );
   }
 }
