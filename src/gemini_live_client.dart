@@ -164,6 +164,12 @@ class GeminiLiveClient {
         // real message — the catch-all below is only for parse hiccups on
         // an unrelated frame shape, and used to swallow this one too,
         // turning a real rejection into a generic 10s timeout.
+        //
+        // This `on LiveError` selectivity is precise ONLY because
+        // `LiveResponse.parse` itself never throws a `LiveError` (just
+        // `FormatException`/`TypeError` on malformed JSON) — if parse ever
+        // started throwing `LiveError`, that would be rethrown here too
+        // and abort setup on what should be a skippable parse hiccup.
         rethrow;
       } catch (e) {
         debugPrint('⚠️ Error parsing setup response: $e');
@@ -369,7 +375,8 @@ class GeminiLiveClient {
         break;
 
       case LiveResponseType.serverContent:
-        final content = response.serverContent;
+        final content =
+            _safeGet('serverContent', () => response.serverContent);
         if (content != null) _handleServerContent(content);
         break;
 
@@ -378,7 +385,7 @@ class GeminiLiveClient {
         // WP-4 (audit L10): dispatch the WHOLE batch in one callback — the
         // app must answer it with one combined BatchToolResponseMessage,
         // not one message per call.
-        final toolCalls = response.toolCalls;
+        final toolCalls = _safeGet('toolCall', () => response.toolCalls);
         if (toolCalls != null && toolCalls.isNotEmpty) {
           _safeDispatch('onToolCallBatch',
               () => callbacks.onToolCallBatch?.call(toolCalls));
@@ -386,7 +393,8 @@ class GeminiLiveClient {
         break;
 
       case LiveResponseType.toolCallCancellation:
-        final ids = response.toolCallCancellationIds;
+        final ids = _safeGet(
+            'toolCallCancellation', () => response.toolCallCancellationIds);
         if (ids != null) {
           for (final id in ids) {
             _safeDispatch('onToolCallCancellation',
@@ -396,7 +404,7 @@ class GeminiLiveClient {
         break;
 
       case LiveResponseType.audioPcm:
-        final pcmData = response.audioPcm;
+        final pcmData = _safeGet('audioPcm', () => response.audioPcm);
         if (pcmData != null) {
           _safeDispatch(
               'onAudioData', () => callbacks.onAudioData?.call(pcmData));
@@ -404,7 +412,7 @@ class GeminiLiveClient {
         break;
 
       case LiveResponseType.error:
-        final errorData = response.error;
+        final errorData = _safeGet('error', () => response.error);
         if (errorData != null) {
           // Transport-fatal: an explicit error frame FROM THE SERVER is a
           // genuine error, unlike a local parse/callback failure — state
@@ -414,7 +422,8 @@ class GeminiLiveClient {
         break;
 
       case LiveResponseType.sessionResumptionUpdate:
-        final update = response.sessionResumptionUpdate;
+        final update = _safeGet('sessionResumptionUpdate',
+            () => response.sessionResumptionUpdate);
         if (update != null) {
           _safeDispatch('onSessionResumptionUpdate',
               () => callbacks.onSessionResumptionUpdate?.call(update));
@@ -422,7 +431,7 @@ class GeminiLiveClient {
         break;
 
       case LiveResponseType.goAway:
-        final goAway = response.goAway;
+        final goAway = _safeGet('goAway', () => response.goAway);
         if (goAway != null) {
           _safeDispatch('onGoAway', () => callbacks.onGoAway?.call(goAway));
         }
@@ -431,6 +440,32 @@ class GeminiLiveClient {
       case LiveResponseType.unknown:
         // Ignore unknown responses
         break;
+    }
+  }
+
+  /// WP-3 addendum (adversarial review of the original fix): `LiveResponse
+  /// .parse` only decodes the JSON envelope — the real nested parsing
+  /// happens in these per-type getters (`ServerContentData.fromJson`,
+  /// `ToolCallData.allFromJson`, `GoAwayData.fromJson`, ...), which throw
+  /// on a JSON-valid-but-structurally-invalid frame (`{"serverContent":
+  /// null}`, `{"toolCall": {}}` with no functionCalls, `{"goAway": null}`).
+  /// Those calls used to sit unguarded between the parse try/catch and
+  /// dispatch, so a throw there escaped as an UNCAUGHT exception on the
+  /// subscription's synchronous onData callback (worse than pre-fix, which
+  /// at least routed it through onError). Treats a getter throw exactly
+  /// like a parse failure: reported via onError, connection state
+  /// untouched.
+  T? _safeGet<T>(String label, T? Function() getter) {
+    try {
+      return getter();
+    } catch (e, stackTrace) {
+      debugPrint(
+          '❌ [LiveClient] $label: structurally invalid frame: $e');
+      _safeDispatch(
+        'onError ($label structural failure)',
+        () => callbacks.onError?.call(LiveError.messageFormat(e, stackTrace)),
+      );
+      return null;
     }
   }
 
