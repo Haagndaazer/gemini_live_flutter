@@ -229,6 +229,8 @@ Main client for interacting with Gemini Live API.
 - `disconnect()` - Close connection
 - `sendText(String text)` - Send text message
 - `sendAudio(List<int> pcmData)` - Send audio data
+- `sendAudioStreamEnd()` - Flush cached audio + trigger a response (auto-VAD mode)
+- `sendActivityStart()` / `sendActivityEnd()` - Mark utterance boundaries (manual-VAD mode only — `realtimeInputConfig.automaticActivityDetection.disabled: true`)
 - `sendToolResponseBatch(List<({String id, String name, Map result})>)` - Send tool execution result(s) — required even for a single call
 - `updateModalities(List<ResponseModality>)` - Change response mode
 - `interrupt()` - Stop current generation

@@ -226,6 +226,41 @@ class AudioStreamEndMessage extends LiveMessage {
   String toString() => 'AudioStreamEnd()';
 }
 
+/// Marks the start of a user utterance — only legal when
+/// realtimeInputConfig.automaticActivityDetection.disabled is true (manual
+/// VAD / WP-5 Option A). See ai.google.dev/api/live —
+/// BidiGenerateContentRealtimeInput.activityStart.
+class ActivityStartMessage extends LiveMessage {
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      'realtimeInput': {
+        'activityStart': <String, dynamic>{},
+      }
+    };
+  }
+
+  @override
+  String toString() => 'ActivityStart()';
+}
+
+/// Marks the end of a user utterance — the manual-VAD counterpart to
+/// [ActivityStartMessage]. See ai.google.dev/api/live —
+/// BidiGenerateContentRealtimeInput.activityEnd.
+class ActivityEndMessage extends LiveMessage {
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      'realtimeInput': {
+        'activityEnd': <String, dynamic>{},
+      }
+    };
+  }
+
+  @override
+  String toString() => 'ActivityEnd()';
+}
+
 /// Interrupt message (stop current generation).
 /// NOTE: The 'interrupt' field does NOT exist in the API spec.
 /// Interruption is implicit — sending any clientContent during generation

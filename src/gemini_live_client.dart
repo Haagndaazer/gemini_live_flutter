@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'callbacks/live_callbacks.dart';
+import 'live_socket_io.dart'
+    if (dart.library.html) 'live_socket_html.dart' as live_socket;
 import 'models/live_config.dart';
 import 'models/live_error.dart';
 import 'models/live_message.dart';
@@ -50,7 +52,9 @@ class GeminiLiveClient {
 
   /// Test seam: swap in a fake channel so lifecycle logic (disconnect
   /// cleanup, close codes, error-state handling) can be driven without a
-  /// real WebSocket. Defaults to the real `WebSocketChannel.connect`.
+  /// real WebSocket. Defaults to [live_socket.connectLiveSocket] — a
+  /// `pingInterval` keepalive on non-web platforms (WP-5, audit L8), a
+  /// plain connect on web (no `dart:html` equivalent knob).
   final WebSocketChannel Function(Uri uri) _channelFactory;
 
   /// Create a new Gemini Live client
@@ -59,7 +63,7 @@ class GeminiLiveClient {
     required this.callbacks,
     @visibleForTesting
     WebSocketChannel Function(Uri uri)? channelFactory,
-  }) : _channelFactory = channelFactory ?? WebSocketChannel.connect;
+  }) : _channelFactory = channelFactory ?? live_socket.connectLiveSocket;
 
   /// Current session state
   LiveSessionState get state => _state;
@@ -281,6 +285,24 @@ class GeminiLiveClient {
     if (!isConnected) return;
 
     final message = AudioStreamEndMessage();
+    await _sendMessage(message);
+  }
+
+  /// WP-5 Option A (manual VAD, config-plumbing-only for now — see
+  /// AutomaticActivityDetectionConfig doc): marks the start of a user
+  /// utterance. Only legal when automaticActivityDetection.disabled=true.
+  Future<void> sendActivityStart() async {
+    if (!isConnected) return;
+
+    final message = ActivityStartMessage();
+    await _sendMessage(message);
+  }
+
+  /// WP-5 Option A counterpart to [sendActivityStart].
+  Future<void> sendActivityEnd() async {
+    if (!isConnected) return;
+
+    final message = ActivityEndMessage();
     await _sendMessage(message);
   }
 

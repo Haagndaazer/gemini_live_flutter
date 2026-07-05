@@ -43,6 +43,10 @@ class LiveConfig {
   /// Context window compression configuration
   final ContextWindowCompressionConfig? contextWindowCompression;
 
+  /// Realtime input handling configuration — voice activity detection
+  /// tuning (WP-5, audit L5) or disabling it entirely for manual VAD.
+  final RealtimeInputConfig? realtimeInputConfig;
+
   const LiveConfig({
     required this.apiKey,
     required this.model,
@@ -55,6 +59,7 @@ class LiveConfig {
     this.outputAudioTranscription = false,
     this.sessionResumption,
     this.contextWindowCompression,
+    this.realtimeInputConfig,
   });
 
   /// Get the full WebSocket URL with authentication
@@ -116,6 +121,11 @@ class LiveConfig {
     // Add context window compression config
     if (contextWindowCompression != null) {
       setup['contextWindowCompression'] = contextWindowCompression!.toJson();
+    }
+
+    // Add realtime input config (VAD tuning or manual-VAD disable)
+    if (realtimeInputConfig != null) {
+      setup['realtimeInputConfig'] = realtimeInputConfig!.toJson();
     }
 
     return {'setup': setup};
@@ -275,6 +285,65 @@ class ContextWindowCompressionConfig {
         if (targetTokens != null) 'targetTokens': targetTokens,
       };
     }
+    return json;
+  }
+}
+
+/// Realtime input handling configuration.
+/// See ai.google.dev/api/live — BidiGenerateContentSetup.realtimeInputConfig.
+class RealtimeInputConfig {
+  final AutomaticActivityDetectionConfig? automaticActivityDetection;
+
+  const RealtimeInputConfig({this.automaticActivityDetection});
+
+  Map<String, dynamic> toJson() {
+    final json = <String, dynamic>{};
+    if (automaticActivityDetection != null) {
+      json['automaticActivityDetection'] = automaticActivityDetection!.toJson();
+    }
+    return json;
+  }
+}
+
+/// Configuration for server-side (automatic) voice activity detection.
+/// See ai.google.dev/api/live —
+/// BidiGenerateContentSetup.realtimeInputConfig.automaticActivityDetection.
+///
+/// WP-5 (audit L5): two independent uses —
+/// - [disabled] = true switches to manual VAD (Option A): the client must
+///   then wrap each utterance in activityStart/activityEnd (see
+///   [ActivityStartMessage]/[ActivityEndMessage] and
+///   `GeminiLiveClient.sendActivityStart`/`sendActivityEnd`). NOT the
+///   default — see the WP-5 commit note on why.
+/// - [endOfSpeechSensitivity]/[silenceDurationMs] tune auto-VAD (kept ON,
+///   Option B, the default) so a language learner's natural mid-utterance
+///   pauses don't split one utterance into multiple server-side turns.
+class AutomaticActivityDetectionConfig {
+  final bool? disabled;
+  final String? startOfSpeechSensitivity;
+  final String? endOfSpeechSensitivity;
+  final int? prefixPaddingMs;
+  final int? silenceDurationMs;
+
+  const AutomaticActivityDetectionConfig({
+    this.disabled,
+    this.startOfSpeechSensitivity,
+    this.endOfSpeechSensitivity,
+    this.prefixPaddingMs,
+    this.silenceDurationMs,
+  });
+
+  Map<String, dynamic> toJson() {
+    final json = <String, dynamic>{};
+    if (disabled != null) json['disabled'] = disabled;
+    if (startOfSpeechSensitivity != null) {
+      json['startOfSpeechSensitivity'] = startOfSpeechSensitivity;
+    }
+    if (endOfSpeechSensitivity != null) {
+      json['endOfSpeechSensitivity'] = endOfSpeechSensitivity;
+    }
+    if (prefixPaddingMs != null) json['prefixPaddingMs'] = prefixPaddingMs;
+    if (silenceDurationMs != null) json['silenceDurationMs'] = silenceDurationMs;
     return json;
   }
 }
