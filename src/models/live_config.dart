@@ -47,6 +47,20 @@ class LiveConfig {
   /// tuning (WP-5, audit L5) or disabling it entirely for manual VAD.
   final RealtimeInputConfig? realtimeInputConfig;
 
+  /// WP-6 (audit L6): enables `historyConfig.initialHistoryInClientContent`
+  /// so a `clientContent` message sent immediately after `setupComplete`
+  /// (via `sendHistorySeed`) seeds conversation history on a FRESH (non-
+  /// resumed) session. A boolean enabling flag only — the history TEXT
+  /// itself travels separately via `sendHistorySeed`'s `clientContent`
+  /// message, never through this setup flag ([VERIFY]ed against
+  /// ai.google.dev/api/live +
+  /// /gemini-api/docs/live-api/capabilities: the doc's own wording is "the
+  /// server will wait and at first process clientContent messages until
+  /// turnComplete is true" — i.e. this flag changes server behavior, so it
+  /// must only be set when a seed message will actually be sent right
+  /// after, never on an ordinary first connect).
+  final bool seedInitialHistory;
+
   const LiveConfig({
     required this.apiKey,
     required this.model,
@@ -60,6 +74,7 @@ class LiveConfig {
     this.sessionResumption,
     this.contextWindowCompression,
     this.realtimeInputConfig,
+    this.seedInitialHistory = false,
   });
 
   /// Get the full WebSocket URL with authentication
@@ -126,6 +141,12 @@ class LiveConfig {
     // Add realtime input config (VAD tuning or manual-VAD disable)
     if (realtimeInputConfig != null) {
       setup['realtimeInputConfig'] = realtimeInputConfig!.toJson();
+    }
+
+    // WP-6 (audit L6): enable clientContent history seeding for a fresh
+    // reconnect. See [seedInitialHistory] field doc for the exact key.
+    if (seedInitialHistory) {
+      setup['historyConfig'] = {'initialHistoryInClientContent': true};
     }
 
     return {'setup': setup};
