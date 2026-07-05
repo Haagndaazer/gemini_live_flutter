@@ -26,7 +26,7 @@ import 'models/live_state.dart';
 ///   callbacks: LiveCallbacks(
 ///     onConnected: () => print('Connected!'),
 ///     onText: (text) => print('AI: $text'),
-///     onToolCall: (call) => executeTool(call),
+///     onToolCallBatch: (calls) => executeTools(calls),
 ///   ),
 /// );
 ///
@@ -241,11 +241,16 @@ class GeminiLiveClient {
     await _sendMessage(message);
   }
 
-  /// Send tool response
-  Future<void> sendToolResponse({
-    required String toolCallId,
-    required Map<String, dynamic> response,
-  }) async {
+  /// Send a batch of tool responses in one message — the sole way to
+  /// answer tool calls (WP-4, audit L4/L10). See [BatchToolResponseMessage]
+  /// for why: `functionResponses[]` entries require `name` (previously
+  /// omitted), and Gemini 3.1+ expects one combined response per batch of
+  /// parallel calls rather than one message per call. Covers a single call
+  /// too — pass a one-entry list.
+  Future<void> sendToolResponseBatch(
+    List<({String id, String name, Map<String, dynamic> response})>
+        responses,
+  ) async {
     if (!isConnected) {
       throw LiveError(
         type: LiveErrorType.connectionFailed,
@@ -253,23 +258,8 @@ class GeminiLiveClient {
       );
     }
 
-    final message = ToolResponseMessage(
-      toolCallId: toolCallId,
-      response: response,
-    );
-
+    final message = BatchToolResponseMessage(responses: responses);
     await _sendMessage(message);
-  }
-
-  /// Send tool error
-  Future<void> sendToolError({
-    required String toolCallId,
-    required String errorMessage,
-  }) async {
-    await sendToolResponse(
-      toolCallId: toolCallId,
-      response: {'error': errorMessage},
-    );
   }
 
   /// Send end of turn signal
@@ -385,11 +375,13 @@ class GeminiLiveClient {
 
       case LiveResponseType.toolCall:
         // Dispatch all tool calls in the batch (Gemini 3.1+ can send multiple)
+        // WP-4 (audit L10): dispatch the WHOLE batch in one callback — the
+        // app must answer it with one combined BatchToolResponseMessage,
+        // not one message per call.
         final toolCalls = response.toolCalls;
-        if (toolCalls != null) {
-          for (final tc in toolCalls) {
-            _safeDispatch('onToolCall', () => callbacks.onToolCall?.call(tc));
-          }
+        if (toolCalls != null && toolCalls.isNotEmpty) {
+          _safeDispatch('onToolCallBatch',
+              () => callbacks.onToolCallBatch?.call(toolCalls));
         }
         break;
 

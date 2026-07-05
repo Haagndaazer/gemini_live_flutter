@@ -15,7 +15,7 @@
 ///     onConnected: () => print('Connected!'),
 ///     onText: (text, {isUser = false}) => print(isUser ? 'User' : 'AI': $text'),
 ///     onAudioData: (pcmData) => playAudio(pcmData),
-///     onToolCall: (toolCall) => executeTool(toolCall),
+///     onToolCallBatch: (toolCalls) => executeTools(toolCalls),
 ///     onError: (error) => print('Error: $error'),
 ///   ),
 /// );

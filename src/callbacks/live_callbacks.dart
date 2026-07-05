@@ -55,10 +55,14 @@ class LiveCallbacks {
   /// This is the raw response containing all parts (text + audio)
   final void Function(ServerContentData content)? onServerContent;
 
-  /// Called when server requests tool execution
+  /// Called when server requests tool execution — ALL calls from the same
+  /// batch together (Gemini 3.1+ can send multiple functionCalls at once).
   ///
-  /// The app should execute the tool and send back a ToolResponseMessage
-  final void Function(ToolCallData toolCall)? onToolCall;
+  /// The app should execute every call and send back ONE
+  /// BatchToolResponseMessage covering the whole batch (WP-4, audit
+  /// L4/L10) — answering them individually risks the model stalling on an
+  /// incomplete batch.
+  final void Function(List<ToolCallData> toolCalls)? onToolCallBatch;
 
   /// Called when server cancels a tool call
   final void Function(String toolCallId)? onToolCallCancellation;
@@ -105,7 +109,7 @@ class LiveCallbacks {
     this.onAudioData,
     this.onInlineAudio,
     this.onServerContent,
-    this.onToolCall,
+    this.onToolCallBatch,
     this.onToolCallCancellation,
     this.onTurnComplete,
     this.onInterrupted,
@@ -141,7 +145,8 @@ class LiveCallbacks {
       onAudioData: (data) => logger('[LiveAPI] Audio data: ${data.length} bytes'),
       onServerContent: (content) =>
           logger('[LiveAPI] Server content: ${content.parts.length} parts'),
-      onToolCall: (toolCall) => logger('[LiveAPI] Tool call: ${toolCall.name}'),
+      onToolCallBatch: (toolCalls) => logger(
+          '[LiveAPI] Tool call batch: ${toolCalls.map((t) => t.name).join(', ')}'),
       onToolCallCancellation: (id) =>
           logger('[LiveAPI] Tool cancelled: $id'),
       onTurnComplete: () => logger('[LiveAPI] Turn complete'),
@@ -167,7 +172,7 @@ class LiveCallbacks {
     void Function(Uint8List)? onAudioData,
     void Function(InlineData)? onInlineAudio,
     void Function(ServerContentData)? onServerContent,
-    void Function(ToolCallData)? onToolCall,
+    void Function(List<ToolCallData>)? onToolCallBatch,
     void Function(String)? onToolCallCancellation,
     void Function()? onTurnComplete,
     void Function()? onInterrupted,
@@ -193,7 +198,7 @@ class LiveCallbacks {
       onAudioData: onAudioData ?? this.onAudioData,
       onInlineAudio: onInlineAudio ?? this.onInlineAudio,
       onServerContent: onServerContent ?? this.onServerContent,
-      onToolCall: onToolCall ?? this.onToolCall,
+      onToolCallBatch: onToolCallBatch ?? this.onToolCallBatch,
       onToolCallCancellation:
           onToolCallCancellation ?? this.onToolCallCancellation,
       onTurnComplete: onTurnComplete ?? this.onTurnComplete,

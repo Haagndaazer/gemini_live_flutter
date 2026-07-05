@@ -114,17 +114,19 @@ final client = GeminiLiveClient(
     ],
   ),
   callbacks: LiveCallbacks(
-    onToolCall: (toolCall) async {
-      print('Tool: ${toolCall.name}, Args: ${toolCall.args}');
+    // Gemini 3.1+ can send several function calls at once — the whole
+    // batch is delivered together and must be answered together in one
+    // BatchToolResponseMessage.
+    onToolCallBatch: (toolCalls) async {
+      final responses = <({String id, String name, Map<String, dynamic> response})>[];
+      for (final toolCall in toolCalls) {
+        print('Tool: ${toolCall.name}, Args: ${toolCall.args}');
+        final result = await executeMyTool(toolCall);
+        responses.add((id: toolCall.id, name: toolCall.name, response: result));
+      }
 
-      // Execute tool
-      final result = await executeMyTool(toolCall);
-
-      // Send result back
-      await client.sendToolResponse(
-        toolCallId: toolCall.id,
-        response: result,
-      );
+      // Send all results back together
+      await client.sendToolResponseBatch(responses);
     },
   ),
 );
@@ -227,7 +229,7 @@ Main client for interacting with Gemini Live API.
 - `disconnect()` - Close connection
 - `sendText(String text)` - Send text message
 - `sendAudio(List<int> pcmData)` - Send audio data
-- `sendToolResponse(String id, Map result)` - Send tool execution result
+- `sendToolResponseBatch(List<({String id, String name, Map result})>)` - Send tool execution result(s) — required even for a single call
 - `updateModalities(List<ResponseModality>)` - Change response mode
 - `interrupt()` - Stop current generation
 - `dispose()` - Cleanup resources
@@ -257,7 +259,7 @@ Event callbacks for handling API responses.
 - `onDisconnected(String reason)` - Connection closed
 - `onText(String text, {bool isUser})` - Text received
 - `onAudioData(Uint8List pcm)` - Audio received
-- `onToolCall(ToolCallData call)` - Tool execution requested
+- `onToolCallBatch(List<ToolCallData> calls)` - Tool execution requested (whole batch together)
 - `onError(LiveError error)` - Error occurred
 - `onConnectionStateChanged(ConnectionState)` - State changed
 - `onAudioStateChanged(AudioState)` - Audio state changed
@@ -427,7 +429,7 @@ See the `test/phase0_poc_live_api_test.dart` file for working examples of:
 **Function calling not working:**
 - Check tool declaration format matches REST API
 - Always send tool responses (success or error)
-- Monitor `onToolCall` callback
+- Monitor `onToolCallBatch` callback
 
 ## Contributing
 

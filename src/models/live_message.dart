@@ -104,60 +104,32 @@ class RealtimeInputMessage extends LiveMessage {
   String toString() => 'RealtimeInput(${audioPcm.length} bytes, $mimeType)';
 }
 
-/// Tool response message (function execution result)
-class ToolResponseMessage extends LiveMessage {
-  final String toolCallId;
-  final Map<String, dynamic> response;
-
-  ToolResponseMessage({
-    required this.toolCallId,
-    required this.response,
-  });
-
-  /// Create success response
-  factory ToolResponseMessage.success({
-    required String toolCallId,
-    required Map<String, dynamic> result,
-  }) {
-    return ToolResponseMessage(
-      toolCallId: toolCallId,
-      response: result,
-    );
-  }
-
-  /// Create error response
-  factory ToolResponseMessage.error({
-    required String toolCallId,
-    required String errorMessage,
-  }) {
-    return ToolResponseMessage(
-      toolCallId: toolCallId,
-      response: {'error': errorMessage},
-    );
-  }
-
-  @override
-  Map<String, dynamic> toJson() {
-    return {
-      'toolResponse': {
-        'functionResponses': [
-          {
-            'id': toolCallId,
-            'response': response,
-          }
-        ]
-      }
-    };
-  }
-
-  @override
-  String toString() => 'ToolResponse(id: $toolCallId, response: $response)';
-}
-
-/// Batch tool response message — sends all function responses in a single message.
-/// Required for Gemini 3.1+ which expects batched responses for parallel tool calls.
+/// Batch tool response message — sends function responses (one or many) in
+/// a single message.
+///
+/// This is the sole way to answer tool calls (WP-4, audit L4/L10):
+/// `functionResponses[]` entries require `id`, `name`, AND `response`
+/// per /gemini-api/docs/live-tools (verified — `name` was previously
+/// omitted here, and forum reports tie a missing `name` to spurious 1008
+/// closes landing right after the first tool response, i.e. on essentially
+/// every turn since `record_turn_observation` fires on every one). Gemini
+/// 3.1+ batches parallel tool calls together and expects one combined
+/// response — this same shape also covers the single-call case, so every
+/// turn goes through one code path instead of two.
+///
+/// Thought-signature passthrough was considered for this message
+/// ([VERIFY]ed against ai.google.dev/api/live and
+/// /gemini-api/docs/generate-content/thought-signatures): thought
+/// signatures are a REST `generateContent` history-reconstruction
+/// mechanism — a sibling field to `functionCall` in a `parts` array that
+/// the client echoes back when replaying prior turns from scratch. The
+/// Live API's `BidiGenerateContentToolResponse`/`FunctionResponse` has no
+/// documented field for it (the bidi session already holds server-side
+/// turn state, so there is nothing to reconstruct), so it is deliberately
+/// NOT threaded through here rather than guessed at.
 class BatchToolResponseMessage extends LiveMessage {
-  final List<({String id, Map<String, dynamic> response})> responses;
+  final List<({String id, String name, Map<String, dynamic> response})>
+      responses;
 
   BatchToolResponseMessage({required this.responses});
 
@@ -168,6 +140,7 @@ class BatchToolResponseMessage extends LiveMessage {
         'functionResponses': responses
             .map((r) => {
                   'id': r.id,
+                  'name': r.name,
                   'response': r.response,
                 })
             .toList(),
