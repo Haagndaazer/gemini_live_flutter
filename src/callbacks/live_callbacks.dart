@@ -31,14 +31,28 @@ class LiveCallbacks {
   /// Called when an error occurs
   final void Function(LiveError error)? onError;
 
-  /// Called when server sends text content
+  /// Called when server sends text content.
   ///
-  /// For voice mode with transcriptions, this includes both:
-  /// - User transcriptions (isUser: true)
-  /// - AI responses (isUser: false)
+  /// Carries two DISTINCT sources, never the AI's spoken-audio transcription:
+  /// - User input transcriptions (isUser: true)
+  /// - modelTurn text parts (isUser: false) — present when the session runs a
+  ///   TEXT response modality
+  ///
+  /// The AI's `outputTranscription` (its spoken audio, transcribed) is a
+  /// separate source delivered via [onOutputTranscription], never here — this
+  /// keeps the two AI text channels from double-firing into the same callback.
   ///
   /// The [finished] flag indicates whether this transcription segment is complete.
   final void Function(String text, {bool isUser, bool finished})? onText;
+
+  /// Called when the server sends the AI's output transcription — its spoken
+  /// audio, transcribed — for a session running an AUDIO response modality
+  /// with `outputAudioTranscription` enabled.
+  ///
+  /// Kept separate from [onText] on purpose: forwarding both this and modelTurn
+  /// text into one callback rendered the same turn twice. The consumer picks
+  /// exactly one AI text source per configured modality.
+  final void Function(String text, {bool finished})? onOutputTranscription;
 
   /// Called when server sends audio data (PCM format)
   ///
@@ -111,6 +125,7 @@ class LiveCallbacks {
     this.onSessionStateChanged,
     this.onError,
     this.onText,
+    this.onOutputTranscription,
     this.onAudioData,
     this.onInlineAudio,
     this.onServerContent,
@@ -148,6 +163,8 @@ class LiveCallbacks {
       onError: (error) => logger('[LiveAPI] Error: $error'),
       onText: (text, {isUser = false, finished = false}) =>
           logger('[LiveAPI] Text (${isUser ? "user" : "ai"}, finished: $finished): $text'),
+      onOutputTranscription: (text, {finished = false}) =>
+          logger('[LiveAPI] Output transcription (finished: $finished): $text'),
       onAudioData: (data) => logger('[LiveAPI] Audio data: ${data.length} bytes'),
       onServerContent: (content) =>
           logger('[LiveAPI] Server content: ${content.parts.length} parts'),
@@ -176,6 +193,7 @@ class LiveCallbacks {
     void Function(LiveSessionState)? onSessionStateChanged,
     void Function(LiveError)? onError,
     void Function(String, {bool isUser, bool finished})? onText,
+    void Function(String, {bool finished})? onOutputTranscription,
     void Function(Uint8List)? onAudioData,
     void Function(InlineData)? onInlineAudio,
     void Function(ServerContentData)? onServerContent,
@@ -203,6 +221,8 @@ class LiveCallbacks {
           onSessionStateChanged ?? this.onSessionStateChanged,
       onError: onError ?? this.onError,
       onText: onText ?? this.onText,
+      onOutputTranscription:
+          onOutputTranscription ?? this.onOutputTranscription,
       onAudioData: onAudioData ?? this.onAudioData,
       onInlineAudio: onInlineAudio ?? this.onInlineAudio,
       onServerContent: onServerContent ?? this.onServerContent,

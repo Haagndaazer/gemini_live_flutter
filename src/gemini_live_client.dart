@@ -528,14 +528,16 @@ class GeminiLiveClient {
       );
     }
 
-    // Extract and trigger AI transcription callback
+    // Extract and trigger AI output-transcription callback. Kept on its OWN
+    // callback (never onText): a turn can carry BOTH this and modelTurn text,
+    // and forwarding both into onText rendered the turn twice. The consumer
+    // chooses exactly one AI text source per configured response modality.
     if (content.outputTranscription != null &&
         content.outputTranscription!.text.isNotEmpty) {
       _safeDispatch(
-        'onText (ai transcription)',
-        () => callbacks.onText?.call(
+        'onOutputTranscription (ai transcription)',
+        () => callbacks.onOutputTranscription?.call(
           content.outputTranscription!.text,
-          isUser: false,
           finished: content.outputTranscription!.finished ?? false,
         ),
       );
